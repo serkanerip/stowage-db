@@ -3,7 +3,7 @@ package com.serkanerip.stowageserver;
 import java.io.Serializable;
 import java.util.Arrays;
 
-public class Data implements Serializable {
+class Data implements Serializable {
     private final byte[] data;
 
     public Data(byte[] data) {

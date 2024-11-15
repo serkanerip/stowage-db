@@ -7,17 +7,19 @@ import org.slf4j.LoggerFactory;
 
 class KeyValueLogStore {
 
+    private static final Logger logger = LoggerFactory.getLogger(KeyValueLogStore.class);
+
     public static final byte[] TOMBSTONE_MARKER = new byte[] {};
 
-    private static final Logger logger = LoggerFactory.getLogger(KeyValueLogStore.class);
+    private final ServerOptions options;
 
     final List<DataSegment> segments;
 
     private Thread monitorThread;
 
-    private final ServerOptions options;
-
-    public KeyValueLogStore(ServerOptions serverOptions, List<DataSegment> segments) {
+    public KeyValueLogStore(
+        ServerOptions serverOptions, List<DataSegment> segments
+    ) {
         this.options = serverOptions;
         this.segments = segments;
     }
@@ -50,7 +52,7 @@ class KeyValueLogStore {
     }
 
     public void delete(byte[] key) {
-        put(key, new byte[] {});
+        put(key, TOMBSTONE_MARKER);
     }
 
     public byte[] get(byte[] key) {

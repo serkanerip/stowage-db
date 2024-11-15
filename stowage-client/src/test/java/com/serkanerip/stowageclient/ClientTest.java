@@ -1,5 +1,7 @@
 package com.serkanerip.stowageclient;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import com.serkanerip.stowageserver.ServerOptions;
@@ -34,11 +36,11 @@ class ClientTest {
     }
 
     @AfterEach
-    public void tearDown() {
+    public void tearDown() throws IOException {
         // Shutdown the client and server
         client.shutdown();
         server.shutdown();
-        Path.of("./test-data").toFile().delete();
+        Files.delete(Path.of("./test-data"));
     }
 
     @Test

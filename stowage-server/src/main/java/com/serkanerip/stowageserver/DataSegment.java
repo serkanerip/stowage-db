@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
@@ -19,9 +20,9 @@ import com.serkanerip.stowageserver.exception.DataEntryWriteFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class DataSegment {
+class DataSegment {
 
-    public static final long SEGMENT_MAX_SIZE_IN_BYTES = 2 * 1024 * 1024;
+    public static final long SEGMENT_MAX_SIZE_IN_BYTES = 2L * 1024 * 1024;
 
     private static final Logger log = LoggerFactory.getLogger(DataSegment.class);
 
@@ -40,8 +41,8 @@ public class DataSegment {
     public void decommission() {
         try {
             fileChannel.close();
-            dataPath.toFile().delete();
-            indexPath.toFile().delete();
+            Files.delete(dataPath);
+            Files.delete(indexPath);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

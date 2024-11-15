@@ -2,7 +2,7 @@ package com.serkanerip.stowageserver;
 
 import java.io.Serializable;
 
-public class SegmentIndex implements Serializable {
+class SegmentIndex implements Serializable {
     private final int valueSize;
     private final long valueOffset;
 
