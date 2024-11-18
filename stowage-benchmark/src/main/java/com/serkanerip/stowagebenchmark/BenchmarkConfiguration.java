@@ -8,24 +8,26 @@ record BenchmarkConfiguration(
     int durationSeconds,
     int warmupDurationSeconds,
     int keySize,
+    int keyCount,
     int valueSize,
+    int valueCount,
     double readRatio,
     double writeRatio,
     int requestCount
 ) {
 
     Map<String, Object> toMap() {
-        return new HashMap<>(){
-            {
-                put("threadCount", threadCount);
-                put("durationSeconds", durationSeconds);
-                put("warmupDurationSeconds", warmupDurationSeconds);
-                put("keySize", keySize);
-                put("valueSize", valueSize);
-                put("readRatio", readRatio);
-                put("writeRatio", writeRatio);
-                put("requestCount", requestCount);
-            }
-        };
+        Map<String, Object> configMap = new HashMap<>();
+        configMap.put("threadCount", threadCount);
+        configMap.put("durationSeconds", durationSeconds);
+        configMap.put("warmupDurationSeconds", warmupDurationSeconds);
+        configMap.put("keySize", keySize);
+        configMap.put("keyCount", keyCount);
+        configMap.put("valueSize", valueSize);
+        configMap.put("valueCount", valueCount);
+        configMap.put("readRatio", readRatio);
+        configMap.put("writeRatio", writeRatio);
+        configMap.put("requestCount", requestCount);
+        return configMap;
     }
 }

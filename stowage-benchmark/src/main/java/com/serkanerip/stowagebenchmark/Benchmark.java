@@ -1,5 +1,6 @@
 package com.serkanerip.stowagebenchmark;
 
+import java.security.SecureRandom;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -26,16 +27,31 @@ class Benchmark {
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicInteger completedRequests = new AtomicInteger(0);
     private final ThreadLocal<Random> threadLocalRandom = ThreadLocal.withInitial(Random::new);
-    private final byte[] sharedValue;
+    private final byte[][] keys;
+    private final byte[][] values;
 
     Benchmark(BenchmarkConfiguration benchmarkConfiguration) {
         this.config = benchmarkConfiguration;
 
         this.client = new Client("localhost", 3030);  // Replace with configurable host/port
         this.executor = Executors.newFixedThreadPool(config.threadCount());
+        this.keys = new byte[config.keyCount()][];
+        this.values = new byte[config.valueCount()][];
+        populateKeysAndValues();
+    }
 
-        this.sharedValue = new byte[config.valueSize()];
-        new Random().nextBytes(this.sharedValue);
+    void populateKeysAndValues() {
+        SecureRandom random = new SecureRandom();
+        for (int i = 0; i < config.keyCount(); i++) {
+            var key = new byte[config.keySize()];
+            random.nextBytes(key);
+            keys[i] = key;
+        }
+        for (int i = 0; i < config.valueCount(); i++) {
+            var value = new byte[config.valueSize()];
+            random.nextBytes(value);
+            values[i] = value;
+        }
     }
 
     void runBenchmark() {
@@ -68,11 +84,11 @@ class Benchmark {
 
         var result = new ResultManager.BenchmarkResult(
             completedRequests.get(),
-            latencyHistogram.getValueAtPercentile(50) / 1_000_000.0,
-            latencyHistogram.getValueAtPercentile(99) / 1_000_000.0,
-            latencyHistogram.getValueAtPercentile(99.9) / 1_000_000.0,
-            latencyHistogram.getValueAtPercentile(99.99) / 1_000_000.0,
-            latencyHistogram.getMaxValue() / 1_000_000.0,
+            latencyHistogram.getValueAtPercentile(50),
+            latencyHistogram.getValueAtPercentile(99),
+            latencyHistogram.getValueAtPercentile(99.9),
+            latencyHistogram.getValueAtPercentile(99.99),
+            latencyHistogram.getMaxValue(),
             completedRequests.get() / (duration / 1e9)
         );
 
@@ -130,12 +146,12 @@ class Benchmark {
 
             Random random = threadLocalRandom.get();
             double action = random.nextDouble();
-            byte[] key = generateRandomKey(config.keySize());
+            var key = keys[random.nextInt(keys.length)];
 
             if (action < config.readRatio()) {
                 client.get(key);
             } else {
-                client.put(key, sharedValue);
+                client.put(key, values[random.nextInt(values.length)]);
             }
 
             if (!isWarmup) {
@@ -146,12 +162,6 @@ class Benchmark {
         } catch (Exception e) {
             logger.error("Error processing request", e);
         }
-    }
-
-    private byte[] generateRandomKey(int size) {
-        byte[] key = new byte[size];
-        threadLocalRandom.get().nextBytes(key);
-        return key;
     }
 
     private void printConfiguration() {

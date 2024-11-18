@@ -2,9 +2,7 @@ package com.serkanerip.stowageserver;
 
 import static com.serkanerip.stowageserver.KeyValueLogStore.TOMBSTONE_MARKER;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 
 import com.serkanerip.stowagecommon.HeapData;
 
@@ -22,7 +20,7 @@ class DataEntry {
         this.deleted = TOMBSTONE_MARKER.equals(value);
     }
 
-    public int persistTo(FileChannel fc) throws IOException {
+    public ByteBuffer serialize() {
         var keySize = key.size();
         var valueSize = value.size();
         var buff = ByteBuffer.allocateDirect(4 + keySize + valueSize + 4);
@@ -31,7 +29,7 @@ class DataEntry {
         buff.putInt(valueSize);
         buff.put(value.toByteArray());
         buff.flip();
-        return fc.write(buff, fc.size());
+        return buff;
     }
 
     public boolean isDeleted() {

@@ -1,6 +1,7 @@
 package com.serkanerip.stowageserver;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,11 +21,12 @@ public class DataSegmentStore {
 
     private DataSegmentStore(ServerOptions options) {
         this.options = options;
-        this.monitoringThread = Thread.ofPlatform().start(() -> {
+        this.monitoringThread = Thread.ofVirtual().start(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     Thread.sleep(15_000);
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     break;
                 }
                 segmentStats.forEach((id, stats) -> logger.info("Segment {} stats {}", id, stats));
@@ -80,7 +82,7 @@ public class DataSegmentStore {
     private void deleteEmptySegments() {
         var emptySegmentIds = new ArrayList<String>();
         segments.forEach((id, segment) -> {
-            if (segment.size() == 0L) {
+            if (segment.dataSize() == 0L) {
                 emptySegmentIds.add(id);
             }
         });
@@ -108,9 +110,7 @@ public class DataSegmentStore {
                     .collect(Collectors.toMap(Utils::extractSegmentId, DataSegment::new))
             );
         } catch (IOException e) {
-            logger.error("Failed to load data segments", e);
-            System.exit(1);
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 

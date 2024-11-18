@@ -31,6 +31,10 @@ class DataSegment {
 
     private final String segmentId;
 
+    private long dataSize = 0L;
+
+    private long indexSize = 0L;
+
     public FileChannel getIndexChannel() {
         return indexChannel;
     }
@@ -42,7 +46,7 @@ class DataSegment {
             Files.delete(dataPath);
             Files.delete(indexPath);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -70,8 +74,6 @@ class DataSegment {
             this.indexChannel = FileChannel.open(indexPath,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
         } catch (IOException e) {
-            log.error("Failed to open file channel", e);
-            System.exit(1);
             throw new UncheckedIOException(e);
         }
     }
@@ -84,12 +86,8 @@ class DataSegment {
         return new IndexChannelIterator(indexChannel);
     }
 
-    public long size() {
-        try {
-            return fileChannel.size();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+    public long dataSize() {
+        return dataSize;
     }
 
     public byte[] read(InMemoryIndex.EntryMetadata entryMetadata) {
@@ -115,12 +113,12 @@ class DataSegment {
 
     public EntryMetadata write(DataEntry dataEntry) {
         try {
-            var valueOffset = fileChannel.size() + 4 + dataEntry.getKey().size() + 4;
-            dataEntry.persistTo(fileChannel);
+            var valueOffset = dataSize + 4 + dataEntry.getKey().size() + 4;
+            dataSize += fileChannel.write(dataEntry.serialize(), dataSize);
             var metadata = new EntryMetadata(
                 dataEntry.getKey().toByteArray(), dataEntry.getValue().size(), valueOffset
             );
-            indexChannel.write(metadata.serialize(), indexChannel.size());
+            indexSize += indexChannel.write(metadata.serialize(), indexSize);
             return metadata;
         } catch (IOException e) {
             throw new DataEntryWriteFailedException(e);

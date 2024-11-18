@@ -32,10 +32,12 @@ class NettyClient {
         this.monitoringThread = Thread.ofVirtual().start(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(5000);
                     logger.info("Number of ongoing requests: {}", requestsMap.size());
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     logger.debug("Monitoring thread interrupted");
+                    break;
                 }
             }
         });
@@ -65,6 +67,7 @@ class NettyClient {
 
     OngoingRequest sendMessage(MessagePayload payload) {
         if (clientChannel == null || !clientChannel.isActive()) {
+            // TODO find a better way of handling this
             throw new RuntimeException("Connection to server is not active. Unable to send message.");
         }
         var id = correlationId.incrementAndGet();

@@ -1,6 +1,7 @@
 package com.serkanerip.stowageserver;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
@@ -44,6 +45,7 @@ class KeyValueLogStore {
                 try {
                     Thread.sleep(10_000L);
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     logger.debug("Interrupted while waiting for active segment", e);
                     return;
                 }
@@ -77,13 +79,16 @@ class KeyValueLogStore {
     }
 
     private void afterPut() {
-        if (activeSegment.size() >= DataSegment.SEGMENT_MAX_SIZE_IN_BYTES) {
+        if (activeSegment.dataSize() >= DataSegment.SEGMENT_MAX_SIZE_IN_BYTES) {
             this.activeSegment = segmentStore.createEmptySegment();
         }
         var segmentsToDecommission = new ArrayList<String>();
         var segmentsToCompact = new ArrayList<String>();
         for (Map.Entry<String, SegmentStats> statsEntry : segmentStore.getSegmentStats()
             .entrySet()) {
+            if (activeSegment.getSegmentId().equals(statsEntry.getKey())) {
+                continue;
+            }
             if (statsEntry.getValue().obsoleteDataRatio() >= 0.6) {
                 if (statsEntry.getValue().obsoleteDataRatio() == 1.0) {
                     segmentsToDecommission.add(statsEntry.getKey());
@@ -117,7 +122,7 @@ class KeyValueLogStore {
                 try {
                     segmentDch.transferTo(position, count, compactSegmentDch);
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    throw new UncheckedIOException(e);
                 }
             }
         }

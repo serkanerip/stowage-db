@@ -11,7 +11,7 @@ class ConfigurationLoader {
         try (FileInputStream fis = new FileInputStream(configPath)) {
             properties.load(fis);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load configuration: " + configPath, e);
+            throw new ConfigurationFileReadFailedException(e);
         }
     }
 
@@ -48,8 +48,16 @@ class ConfigurationLoader {
         return Integer.parseInt(properties.getOrDefault("key_size", "16").toString());
     }
 
+    public int getKeyCount() {
+        return Integer.parseInt(properties.getOrDefault("key_count", "10000").toString());
+    }
+
     public int getValueSize() {
         return Integer.parseInt(properties.getOrDefault("value_size", "128").toString());
+    }
+
+    public int getValueCount() {
+        return Integer.parseInt(properties.getOrDefault("value_count", "10000").toString());
     }
 
     public double getReadRatio() {
@@ -62,8 +70,12 @@ class ConfigurationLoader {
 
     public BenchmarkConfiguration load() {
         return new BenchmarkConfiguration(
-            getThreadCount(), getDurationSeconds(), getWarmupDuration(), getKeySize(), getValueSize(),
-            getReadRatio(), getWriteRatio(), getRequestCount()
+            getThreadCount(),
+            getDurationSeconds(), getWarmupDuration(),
+            getKeySize(), getKeyCount(),
+            getValueSize(), getValueCount(),
+            getReadRatio(), getWriteRatio(),
+            getRequestCount()
         );
     }
 }
