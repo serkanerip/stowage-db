@@ -20,12 +20,8 @@ record EntryMetadata(
 
     public static EntryMetadata deserialize(ByteBuffer buffer) {
         int keyLen = buffer.getInt();
-
-        // Read the key
         byte[] key = new byte[keyLen];
         buffer.get(key);
-
-        // Read value metadata
         long valueOffset = buffer.getLong();
         int valueSize = buffer.getInt();
         return new EntryMetadata(key, valueSize, valueOffset);

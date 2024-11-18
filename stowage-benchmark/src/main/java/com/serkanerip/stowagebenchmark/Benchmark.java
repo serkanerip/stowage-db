@@ -33,7 +33,8 @@ class Benchmark {
     Benchmark(BenchmarkConfiguration benchmarkConfiguration) {
         this.config = benchmarkConfiguration;
 
-        this.client = new Client("localhost", 3030);  // Replace with configurable host/port
+        logger.info("Connecting to the {}:{}", HOST, PORT);
+        this.client = new Client(HOST, PORT);  // Replace with configurable host/port
         this.executor = Executors.newFixedThreadPool(config.threadCount());
         this.keys = new byte[config.keyCount()][];
         this.values = new byte[config.valueCount()][];
@@ -229,7 +230,7 @@ class Benchmark {
 
     public static void main(String[] args) {
         ConfigurationLoader loader =
-            new ConfigurationLoader("./stowage-benchmark/throughput_test.yaml");
+            new ConfigurationLoader("./throughput_test.yaml");
 
         Benchmark benchmark = new Benchmark(loader.load());
         benchmark.runBenchmark();
