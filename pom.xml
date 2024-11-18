@@ -12,6 +12,7 @@
         <module>stowage-common</module>
         <module>stowage-server</module>
         <module>stowage-client</module>
+        <module>stowage-benchmark</module>
     </modules>
 
     <properties>
