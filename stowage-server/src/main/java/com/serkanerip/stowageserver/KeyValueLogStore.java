@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
 
+import com.serkanerip.stowagecommon.HeapData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +13,7 @@ class KeyValueLogStore {
 
     private static final Logger logger = LoggerFactory.getLogger(KeyValueLogStore.class);
 
-    public static final byte[] TOMBSTONE_MARKER = new byte[] {};
+    public static final HeapData TOMBSTONE_MARKER = new HeapData(new byte[] {});
 
     private final InMemoryIndex inMemoryIndex;
 
@@ -53,27 +54,25 @@ class KeyValueLogStore {
         logger.info("Initialized KeyValueLogStore");
     }
 
-    public void delete(byte[] key) {
+    public void delete(HeapData key) {
         put(key, TOMBSTONE_MARKER);
     }
 
-    public byte[] get(byte[] key) {
-        var keyData = new Data(key);
-        var metadata = inMemoryIndex.get(keyData);
+    public byte[] get(HeapData key) {
+        var metadata = inMemoryIndex.get(key);
         if (metadata == null) {
             return null;
         }
         return segmentStore.getSegment(metadata.segmentId()).read(metadata);
     }
 
-    public void put(byte[] key, byte[] value) {
-        var keyData = new Data(key);
-        var dataEntry = new DataEntry(keyData, new Data(value));
+    public void put(HeapData key, HeapData value) {
+        var dataEntry = new DataEntry(key, value);
         var metadata = activeSegment.write(dataEntry);
         var inMemoryMetadata = InMemoryIndex.EntryMetadata.fromPersistentEntryMetadata(
             activeSegment.getSegmentId(), metadata
         );
-        inMemoryIndex.put(keyData, inMemoryMetadata);
+        inMemoryIndex.put(key, inMemoryMetadata);
         afterPut();
     }
 
@@ -107,7 +106,7 @@ class KeyValueLogStore {
         var newSegmentStats = new SegmentStats();
         while (indexIterator.hasNext()) {
             var metadata = indexIterator.next();
-            var inMemoryMetadata = inMemoryIndex.get(new Data(metadata.key()));
+            var inMemoryMetadata = inMemoryIndex.get(new HeapData(metadata.key()));
             if (Objects.equals(inMemoryMetadata.segmentId(), segment.getSegmentId())
                 && inMemoryMetadata.valueOffset() == metadata.valueOffset()
             ) {

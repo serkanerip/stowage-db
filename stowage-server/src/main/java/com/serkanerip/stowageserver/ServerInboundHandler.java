@@ -46,7 +46,7 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
         var type = message.getType();
         var size = message.getSize();
 
-        logger.debug("Received frame of type: {} with size: {} uuid: {}",
+        logger.debug("Received message of type: {} with size: {} uuid: {}",
             type, size, message.getCorrelationId());
         var payload = message.getPayload();
         switch (message.getType()) {

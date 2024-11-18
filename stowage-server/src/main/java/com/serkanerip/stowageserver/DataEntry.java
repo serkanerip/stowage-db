@@ -5,20 +5,21 @@ import static com.serkanerip.stowageserver.KeyValueLogStore.TOMBSTONE_MARKER;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.Arrays;
+
+import com.serkanerip.stowagecommon.HeapData;
 
 class DataEntry {
 
-    private final Data key;
+    private final HeapData key;
 
-    private final Data value;
+    private final HeapData value;
 
     private final boolean deleted;
 
-    public DataEntry(Data key, Data value) {
+    public DataEntry(HeapData key, HeapData value) {
         this.key = key;
         this.value = value;
-        this.deleted = Arrays.equals(TOMBSTONE_MARKER, value.getData());
+        this.deleted = TOMBSTONE_MARKER.equals(value);
     }
 
     public int persistTo(FileChannel fc) throws IOException {
@@ -26,9 +27,9 @@ class DataEntry {
         var valueSize = value.size();
         var buff = ByteBuffer.allocateDirect(4 + keySize + valueSize + 4);
         buff.putInt(keySize);
-        buff.put(key.getData());
+        buff.put(key.toByteArray());
         buff.putInt(valueSize);
-        buff.put(value.getData());
+        buff.put(value.toByteArray());
         buff.flip();
         return fc.write(buff, fc.size());
     }
@@ -37,11 +38,11 @@ class DataEntry {
         return deleted;
     }
 
-    public Data getKey() {
+    public HeapData getKey() {
         return key;
     }
 
-    public Data getValue() {
+    public HeapData getValue() {
         return value;
     }
 }

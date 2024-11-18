@@ -117,7 +117,9 @@ class DataSegment {
         try {
             var valueOffset = fileChannel.size() + 4 + dataEntry.getKey().size() + 4;
             dataEntry.persistTo(fileChannel);
-            var metadata = new EntryMetadata(dataEntry.getKey().getData(), dataEntry.getValue().size(), valueOffset);
+            var metadata = new EntryMetadata(
+                dataEntry.getKey().toByteArray(), dataEntry.getValue().size(), valueOffset
+            );
             indexChannel.write(metadata.serialize(), indexChannel.size());
             return metadata;
         } catch (IOException e) {

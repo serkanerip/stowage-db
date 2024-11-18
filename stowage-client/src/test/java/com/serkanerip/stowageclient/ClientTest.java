@@ -1,11 +1,14 @@
 package com.serkanerip.stowageclient;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import com.serkanerip.stowageserver.ServerOptions;
 import com.serkanerip.stowageserver.StowageServer;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,29 +21,30 @@ class ClientTest {
 
     private StowageServer server;
 
+    private static final Path testDataPath = Path.of("./test-data");
+
     @BeforeEach
     public void setUp() {
-        var options = new ServerOptions("localhost", 53800, Path.of("./test-data"));
+        var options = new ServerOptions("localhost", 53800, testDataPath);
         server = new StowageServer(options);
         server.start();
 
-        // Initialize the client
         client = new Client("localhost", 53800);
-
-        // Wait a moment to ensure the server is fully started before running tests
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     @AfterEach
     public void tearDown() throws IOException {
-        // Shutdown the client and server
         client.shutdown();
         server.shutdown();
-        Files.delete(Path.of("./test-data"));
+        Files.walkFileTree(testDataPath, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        Files.delete(testDataPath);
     }
 
     @Test

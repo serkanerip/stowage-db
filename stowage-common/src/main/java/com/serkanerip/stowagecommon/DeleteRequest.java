@@ -4,9 +4,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 public class DeleteRequest implements MessagePayload {
-    private final byte[] key;
+    private final HeapData key;
 
-    public DeleteRequest(byte[] key) {
+    public DeleteRequest(HeapData key) {
         this.key = key;
     }
 
@@ -14,10 +14,10 @@ public class DeleteRequest implements MessagePayload {
         var keySize = buf.readInt();
         var key = new byte[keySize];
         buf.readBytes(key);
-        return new DeleteRequest(key);
+        return new DeleteRequest(new HeapData(key));
     }
 
-    public byte[] getKey() {
+    public HeapData getKey() {
         return key;
     }
 
@@ -29,8 +29,8 @@ public class DeleteRequest implements MessagePayload {
     @Override
     public ByteBuf encode() {
         var buffer = Unpooled.buffer();
-        buffer.writeInt(key.length);
-        buffer.writeBytes(key);
+        buffer.writeInt(key.size());
+        buffer.writeBytes(key.toByteArray());
         return buffer;
     }
 }

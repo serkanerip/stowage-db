@@ -4,19 +4,19 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 public class PutRequest implements MessagePayload {
-    private final byte[] key;
-    private final byte[] value;
+    private final HeapData key;
+    private final HeapData value;
 
-    public PutRequest(byte[] key, byte[] value) {
+    public PutRequest(HeapData key, HeapData value) {
         this.key = key;
         this.value = value;
     }
 
-    public byte[] getKey() {
+    public HeapData getKey() {
         return key;
     }
 
-    public byte[] getValue() {
+    public HeapData getValue() {
         return value;
     }
 
@@ -32,16 +32,16 @@ public class PutRequest implements MessagePayload {
         var valueSize = buf.readInt();
         var value = new byte[valueSize];
         buf.readBytes(value);
-        return new PutRequest(key, value);
+        return new PutRequest(new HeapData(key), new HeapData(value));
     }
 
     @Override
     public ByteBuf encode() {
         var buffer = Unpooled.buffer();
-        buffer.writeInt(key.length);
-        buffer.writeBytes(key);
-        buffer.writeInt(value.length);
-        buffer.writeBytes(value);
+        buffer.writeInt(key.size());
+        buffer.writeBytes(key.toByteArray());
+        buffer.writeInt(value.size());
+        buffer.writeBytes(value.toByteArray());
         return buffer;
     }
 }

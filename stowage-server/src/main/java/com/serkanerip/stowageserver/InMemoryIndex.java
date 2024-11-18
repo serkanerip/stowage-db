@@ -3,6 +3,7 @@ package com.serkanerip.stowageserver;
 import java.util.Comparator;
 import java.util.HashMap;
 
+import com.serkanerip.stowagecommon.HeapData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +21,7 @@ class InMemoryIndex {
 
     private final DataSegmentStore store;
 
-    private final HashMap<Data, EntryMetadata> index = new HashMap<>();
+    private final HashMap<HeapData, EntryMetadata> index = new HashMap<>();
 
     private InMemoryIndex(DataSegmentStore store) {
         this.store = store;
@@ -38,11 +39,11 @@ class InMemoryIndex {
         return index.size();
     }
 
-    EntryMetadata get(Data key) {
+    EntryMetadata get(HeapData key) {
         return index.get(key);
     }
 
-    void put(Data key, EntryMetadata metadata) {
+    void put(HeapData key, EntryMetadata metadata) {
         var previousMetadata = index.get(key);
         index.put(key, metadata);
         store.updateStats(key.size(), previousMetadata, metadata);
@@ -57,7 +58,7 @@ class InMemoryIndex {
                 var iterator = segment.newIndexIterator();
                 while (iterator.hasNext()) {
                     var persistentMetadata = iterator.next();
-                    put(new Data(persistentMetadata.key()), new EntryMetadata(
+                    put(new HeapData(persistentMetadata.key()), new EntryMetadata(
                         segmentId, persistentMetadata.valueSize(), persistentMetadata.valueOffset()
                     ));
                 }
