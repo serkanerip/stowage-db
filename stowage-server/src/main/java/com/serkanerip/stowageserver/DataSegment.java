@@ -1,10 +1,6 @@
 package com.serkanerip.stowageserver;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.UncheckedIOException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
@@ -12,8 +8,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Iterator;
 
 import com.serkanerip.stowageserver.exception.DataEntryReadFailedException;
 import com.serkanerip.stowageserver.exception.DataEntryWriteFailedException;
@@ -22,25 +17,28 @@ import org.slf4j.LoggerFactory;
 
 class DataSegment {
 
-    public static final long SEGMENT_MAX_SIZE_IN_BYTES = 2L * 1024 * 1024;
+    public static final long SEGMENT_MAX_SIZE_IN_BYTES = 1L << 30;
 
     private static final Logger log = LoggerFactory.getLogger(DataSegment.class);
 
-    private final Map<Data, SegmentIndex> index = new HashMap<>();
-
     private final FileChannel fileChannel;
 
-    private final Path dataPath;
+    final Path dataPath;
 
     private final Path indexPath;
 
+    private final FileChannel indexChannel;
+
     private final String segmentId;
 
-    private final boolean merged;
+    public FileChannel getIndexChannel() {
+        return indexChannel;
+    }
 
     public void decommission() {
+        log.info("Decommissioning segment {}", segmentId);
         try {
-            fileChannel.close();
+            shutdown();
             Files.delete(dataPath);
             Files.delete(indexPath);
         } catch (IOException e) {
@@ -50,51 +48,40 @@ class DataSegment {
 
     public void shutdown() {
         log.info("Shutting down DataSegment");
-        try (ObjectOutputStream oos = new ObjectOutputStream(
-            new FileOutputStream(indexPath.toFile()))) {
+        try {
+            indexChannel.close();
             fileChannel.close();
-            oos.writeObject(index);
         } catch (IOException e) {
             log.error("Error while shutting down data segment", e);
         }
-    }
-
-    Map<Data, SegmentIndex> index() {
-        return index;
     }
 
     public String getSegmentId() {
         return segmentId;
     }
 
-    public boolean isMerged() {
-        return merged;
-    }
-
-    public DataSegment(Path dataPath, boolean reloadIndex) {
+    public DataSegment(Path dataPath) {
         try {
-            this.merged = dataPath.getFileName().toString().contains("-merged");
             this.dataPath = dataPath;
-            this.segmentId = dataPath.getFileName().toString().split(".data")[0];
+            this.segmentId = Utils.extractSegmentId(dataPath);
             this.indexPath = dataPath.getParent().resolve("%s.index".formatted(segmentId));
             this.fileChannel = FileChannel.open(dataPath,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
-            if (reloadIndex) {
-                ObjectInputStream ois =
-                    new ObjectInputStream(new FileInputStream(indexPath.toFile()));
-                Map<Data, SegmentIndex> loadedIndex = (Map<Data, SegmentIndex>) ois.readObject();
-                index.clear();
-                index.putAll(loadedIndex);
-            }
+            this.indexChannel = FileChannel.open(indexPath,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
         } catch (IOException e) {
             log.error("Failed to open file channel", e);
             System.exit(1);
             throw new UncheckedIOException(e);
-        } catch (ClassNotFoundException e) {
-            log.error("Failed to reload index", e);
-            System.exit(1);
-            throw new RuntimeException(e);
         }
+    }
+
+    public FileChannel getDataChannel() {
+        return fileChannel;
+    }
+
+    public IndexChannelIterator newIndexIterator() {
+        return new IndexChannelIterator(indexChannel);
     }
 
     public long size() {
@@ -105,46 +92,59 @@ class DataSegment {
         }
     }
 
-    public long entryCount() {
-        return index.size();
-    }
-
-    public boolean hasKey(Data key) {
-        return index.containsKey(key);
-    }
-
-    public DataEntry read(Data key) {
-        var i = index.get(key);
-        if (i == null) {
-            return null;
-        }
-        var buff = ByteBuffer.allocateDirect(i.getValueSize());
-        var valueOffset = i.getValueOffset();
+    public byte[] read(InMemoryIndex.EntryMetadata entryMetadata) {
+        var valSize = entryMetadata.valueSize();
+        var valueOffset = entryMetadata.valueOffset();
+        var buff = ByteBuffer.allocateDirect(valSize);
         try {
             fileChannel.read(buff, valueOffset);
             buff.flip();
-            if (buff.remaining() != i.getValueSize()) {
+            if (buff.remaining() != valSize) {
                 throw new DataEntryReadFailedException(
                     "Failed to read data entry expectedSize=%d, got=%d".formatted(
-                        i.getValueSize(), buff.remaining()
+                        valSize, buff.remaining()
                     ));
             }
-            var readValue = new byte[i.getValueSize()];
+            var readValue = new byte[valSize];
             buff.get(readValue);
-            return new DataEntry(key, new Data(readValue));
+            return readValue;
         } catch (IOException | BufferUnderflowException e) {
             throw new DataEntryReadFailedException(e);
         }
     }
 
-    public void write(DataEntry dataEntry) {
+    public EntryMetadata write(DataEntry dataEntry) {
         try {
             var valueOffset = fileChannel.size() + 4 + dataEntry.getKey().size() + 4;
             dataEntry.persistTo(fileChannel);
-            index.put(dataEntry.getKey(),
-                new SegmentIndex(dataEntry.getValue().size(), valueOffset));
+            var metadata = new EntryMetadata(dataEntry.getKey().getData(), dataEntry.getValue().size(), valueOffset);
+            indexChannel.write(metadata.serialize(), indexChannel.size());
+            return metadata;
         } catch (IOException e) {
             throw new DataEntryWriteFailedException(e);
+        }
+    }
+
+    static class IndexChannelIterator implements Iterator<EntryMetadata> {
+
+        private final ByteBuffer buffer;
+
+        private IndexChannelIterator(FileChannel indexChannel) {
+            try {
+                this.buffer = indexChannel.map(FileChannel.MapMode.READ_ONLY, 0L, indexChannel.size());
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return buffer.hasRemaining();
+        }
+
+        @Override
+        public EntryMetadata next() {
+            return EntryMetadata.deserialize(buffer);
         }
     }
 }
