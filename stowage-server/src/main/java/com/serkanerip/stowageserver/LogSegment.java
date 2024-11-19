@@ -120,7 +120,7 @@ class LogSegment {
 
         var buff = ByteBuffer.allocateDirect(valSize);
         try {
-            int bytesRead = 0;
+            int bytesRead;
             int totalBytesRead = 0;
 
             // Handle partial reads

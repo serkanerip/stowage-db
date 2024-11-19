@@ -28,8 +28,8 @@ class Benchmark {
     private final ThreadLocal<Random> threadLocalRandom = ThreadLocal.withInitial(Random::new);
     private final byte[][] keys;
     private final byte[][] values;
-    private static AtomicInteger readCounter = new AtomicInteger(0);
-    private static AtomicInteger writeCounter = new AtomicInteger(0);
+    private static final AtomicInteger readCounter = new AtomicInteger(0);
+    private static final AtomicInteger writeCounter = new AtomicInteger(0);
 
     Benchmark(BenchmarkConfiguration benchmarkConfiguration) {
         this.config = benchmarkConfiguration;

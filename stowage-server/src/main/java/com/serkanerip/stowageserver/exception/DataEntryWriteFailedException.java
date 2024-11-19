@@ -6,7 +6,4 @@ public class DataEntryWriteFailedException extends RuntimeException {
         super(cause);
     }
 
-    public DataEntryWriteFailedException(String message, Throwable cause) {
-        super(message, cause);
-    }
 }
