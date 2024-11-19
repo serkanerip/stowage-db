@@ -4,8 +4,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.serkanerip.stowagecommon.DeleteRequest;
 import com.serkanerip.stowagecommon.ErrorCode;
@@ -29,7 +27,7 @@ class StoreOperationHandler {
     private final LinkedBlockingQueue<Runnable> writeQueue = new LinkedBlockingQueue<>();
     private volatile boolean isQueueClosed = false;
     private final LogStructuredStore store;
-    private final ReadWriteLock rwLock = new ReentrantReadWriteLock(true);
+    private final Object writeLock = new Object();
 
     StoreOperationHandler(LogStructuredStore store) {
         this.store = store;
@@ -77,7 +75,8 @@ class StoreOperationHandler {
 
     public void addToQueue(MessagePayload messagePayload, long corId, Channel channel) {
         if (isQueueClosed) {
-            logger.warn("Queue is closed, executor will shutdown soon therefore no new task allowed!");
+            logger.warn(
+                "Queue is closed, executor will shutdown soon therefore no new task allowed!");
             return;
         }
 
@@ -93,7 +92,8 @@ class StoreOperationHandler {
                     handledRequestCount.incrementAndGet();
                 }
             });
-        } else if (messagePayload instanceof PutRequest || messagePayload instanceof DeleteRequest) {
+        } else if (messagePayload instanceof PutRequest
+            || messagePayload instanceof DeleteRequest) {
             try {
                 writeQueue.put(() -> {
                     try {
@@ -117,51 +117,47 @@ class StoreOperationHandler {
 
     private void executeReadRequest(GetRequest request, long corId, Channel channel) {
         logger.debug("Handling read request with corId: {}", corId);
-        rwLock.readLock().lock();
-        try {
-            var value = store.get(request.getKey());
-            var response = new GetResponse(value);
-            sendResponse(channel, new TransportMessage(
-                TransportMessageType.GET_RESPONSE,
-                corId,
-                response.encode()
-            ));
-        } finally {
-            rwLock.readLock().unlock();
-        }
+        var value = store.get(request.getKey());
+        var response = new GetResponse(value);
+        sendResponse(channel, new TransportMessage(
+            TransportMessageType.GET_RESPONSE,
+            corId,
+            response.encode()
+        ));
     }
 
-    private void executeWriteOrDeleteRequest(MessagePayload messagePayload, long corId, Channel channel) {
+    private void executeWriteOrDeleteRequest(MessagePayload messagePayload, long corId,
+                                             Channel channel) {
         logger.debug("Handling write/delete request of type: {} with corId: {}",
             messagePayload.getClass().getSimpleName(), corId);
 
-        rwLock.writeLock().lock();
-        try {
-            switch (messagePayload) {
-                case PutRequest request -> {
+        switch (messagePayload) {
+            case PutRequest request -> {
+                synchronized (writeLock) {
                     store.put(request.getKey(), request.getValue());
-                    sendResponse(channel, new TransportMessage(
-                        TransportMessageType.SIMPLE_RESPONSE,
-                        corId,
-                        new SimpleResponse(true, ErrorCode.NO_ERR).encode()
-                    ));
                 }
-                case DeleteRequest request -> {
-                    store.delete(request.getKey());
-                    sendResponse(channel, new TransportMessage(
-                        TransportMessageType.SIMPLE_RESPONSE,
-                        corId,
-                        new SimpleResponse(true, ErrorCode.NO_ERR).encode()
-                    ));
-                }
-                default -> {
-                    logger.warn("Unknown write/delete payload type!");
-                    channel.close();
-                }
+                sendResponse(channel, new TransportMessage(
+                    TransportMessageType.SIMPLE_RESPONSE,
+                    corId,
+                    new SimpleResponse(true, ErrorCode.NO_ERR).encode()
+                ));
             }
-        } finally {
-            rwLock.writeLock().unlock();
+            case DeleteRequest request -> {
+                synchronized (writeLock) {
+                    store.delete(request.getKey());
+                }
+                sendResponse(channel, new TransportMessage(
+                    TransportMessageType.SIMPLE_RESPONSE,
+                    corId,
+                    new SimpleResponse(true, ErrorCode.NO_ERR).encode()
+                ));
+            }
+            default -> {
+                logger.warn("Unknown write/delete payload type!");
+                channel.close();
+            }
         }
+
     }
 
     private void sendResponse(Channel channel, TransportMessage message) {

@@ -35,6 +35,20 @@ class LogSegment {
 
     private long indexSize;
 
+    EntryMetadata transferFrom(FileChannel sourceChannel, EntryMetadata metadata) throws IOException {
+        var readPos = metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
+        var readCount = Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
+        var newValOffset = dataSize + Integer.BYTES + metadata.key().length;
+        dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
+        var newMetadata = new EntryMetadata(
+            metadata.key(), metadata.valueSize(), dataSize + Integer.BYTES + metadata.key().length
+        );
+        indexSize += indexChannel.write(newMetadata.serialize(), indexSize);
+        return new EntryMetadata(
+            metadata.key(), metadata.valueSize(), newValOffset
+        );
+    }
+
     public void decommission() {
         log.info("Decommissioning segment {}", segmentId);
         try {
@@ -49,6 +63,8 @@ class LogSegment {
     public void shutdown() {
         log.info("Shutting down DataSegment");
         try {
+            indexChannel.force(true);
+            fileChannel.force(true);
             indexChannel.close();
             fileChannel.close();
         } catch (IOException e) {

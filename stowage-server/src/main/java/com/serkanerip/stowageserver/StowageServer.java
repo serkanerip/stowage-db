@@ -14,9 +14,7 @@ public class StowageServer {
 
     public StowageServer(ServerOptions serverOptions) {
         this.serverOptions = serverOptions;
-        var segmentStore = DataSegmentStore.create(serverOptions);
-        var inMemoryIndex = InMemoryIndex.create(segmentStore);
-        this.store = new LogStructuredStore(inMemoryIndex, segmentStore);
+        this.store = new LogStructuredStore(serverOptions);
         this.storeOperationHandler = new StoreOperationHandler(store);
         this.nettyServer = new NettyServer(storeOperationHandler);
     }

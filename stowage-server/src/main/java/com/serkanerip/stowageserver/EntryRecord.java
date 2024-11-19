@@ -32,10 +32,6 @@ class EntryRecord {
         return buff;
     }
 
-    public boolean isDeleted() {
-        return deleted;
-    }
-
     public HeapData getKey() {
         return key;
     }
