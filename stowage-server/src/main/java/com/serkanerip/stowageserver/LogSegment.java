@@ -38,7 +38,7 @@ class LogSegment {
     EntryMetadata transferFrom(FileChannel sourceChannel, EntryMetadata metadata) throws IOException {
         var readPos = metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
         var readCount = Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
-        var newValOffset = dataSize + Integer.BYTES + metadata.key().length;
+        var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
         dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
         var newMetadata = new EntryMetadata(
             metadata.key(), metadata.valueSize(), dataSize + Integer.BYTES + metadata.key().length
@@ -72,7 +72,7 @@ class LogSegment {
         }
     }
 
-    public String getSegmentId() {
+    public String getId() {
         return segmentId;
     }
 
@@ -87,6 +87,8 @@ class LogSegment {
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
             this.dataSize = fileChannel.size();
             this.indexSize = indexChannel.size();
+            fileChannel.position(dataSize);
+            indexChannel.position(indexSize);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -154,11 +156,11 @@ class LogSegment {
     public EntryMetadata write(EntryRecord entryRecord) {
         try {
             var valueOffset = dataSize + 4 + entryRecord.getKey().size() + 4;
-            dataSize += fileChannel.write(entryRecord.serialize(), dataSize);
+            dataSize += fileChannel.write(entryRecord.serialize());
             var metadata = new EntryMetadata(
                 entryRecord.getKey().toByteArray(), entryRecord.getValue().size(), valueOffset
             );
-            indexSize += indexChannel.write(metadata.serialize(), indexSize);
+            indexSize += indexChannel.write(metadata.serialize());
             return metadata;
         } catch (IOException e) {
             throw new DataEntryWriteFailedException(e);

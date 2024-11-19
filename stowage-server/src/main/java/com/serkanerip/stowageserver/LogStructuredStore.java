@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.serkanerip.stowagecommon.HeapData;
@@ -45,7 +44,7 @@ class LogStructuredStore {
     public void init() {
         buildSegmentsFromFiles();
         deleteEmptySegments();
-        this.inMemoryIndex = InMemoryIndex.fromLogSegments(segments);
+        this.inMemoryIndex = InMemoryIndex.fromLogSegments(segments, segmentStats);
         this.activeSegment = createEmptySegment();
         this.monitorThread = Thread.ofVirtual().start(() -> {
             while (!Thread.currentThread().isInterrupted()) {
@@ -80,10 +79,9 @@ class LogStructuredStore {
         var dataEntry = new EntryRecord(key, value);
         var metadata = activeSegment.write(dataEntry);
         var inMemoryMetadata = InMemoryIndex.EntryMetadata.fromPersistentEntryMetadata(
-            activeSegment.getSegmentId(), metadata
+            activeSegment.getId(), metadata
         );
-        var prevMetadata = inMemoryIndex.put(key, inMemoryMetadata);
-        updateStats(key.size(), prevMetadata, inMemoryMetadata);
+        inMemoryIndex.put(key, inMemoryMetadata);
         afterPut();
     }
 
@@ -95,7 +93,7 @@ class LogStructuredStore {
         var segmentsToDecommission = new ArrayList<String>();
         for (Map.Entry<String, SegmentStats> statsEntry : getSegmentStats()
             .entrySet()) {
-            if (activeSegment.getSegmentId().equals(statsEntry.getKey())) {
+            if (activeSegment.getId().equals(statsEntry.getKey())) {
                 continue;
             }
             if (statsEntry.getValue().obsoleteDataRatio() >= 0.30) {
@@ -113,22 +111,22 @@ class LogStructuredStore {
 
     private void compactSegment(LogSegment segment) {
         var startTime = System.currentTimeMillis();
-        logger.info("Compacting segment {}", segment.getSegmentId());
+        logger.info("Compacting segment {}", segment.getId());
         var indexIterator = segment.newIndexIterator();
         var segmentDch = segment.getDataChannel();
         while (indexIterator.hasNext()) {
             var metadata = indexIterator.next();
             var keyHeapData = new HeapData(metadata.key());
             var inMemoryMetadata = inMemoryIndex.get(keyHeapData);
-            if (Objects.equals(inMemoryMetadata.segmentId(), segment.getSegmentId())
-                && inMemoryMetadata.valueOffset() == metadata.valueOffset()
-            ) {
+            var isMetadataFresh = inMemoryMetadata.segmentId().equals(segment.getId())
+                && inMemoryMetadata.valueOffset() == metadata.valueOffset();
+            if (isMetadataFresh) {
                 try {
                     var newDataEntry = activeSegment.transferFrom(segmentDch, metadata);
                     inMemoryIndex.put(
                         keyHeapData,
                         InMemoryIndex.EntryMetadata.fromPersistentEntryMetadata(
-                            activeSegment.getSegmentId(), newDataEntry
+                            activeSegment.getId(), newDataEntry
                         )
                     );
                 } catch (IOException e) {
@@ -136,8 +134,8 @@ class LogStructuredStore {
                 }
             }
         }
-        decommission(segment.getSegmentId());
-        logger.info("Compacted segment {} in {} ms", segment.getSegmentId(),
+        decommission(segment.getId());
+        logger.info("Compacted segment {} in {} ms", segment.getId(),
             System.currentTimeMillis() - startTime);
     }
 
@@ -145,30 +143,7 @@ class LogStructuredStore {
         logger.info("Decommissioning segment {}", segmentId);
         var segment = segments.remove(segmentId);
         segment.decommission();
-        segmentStats.remove(segment.getSegmentId());
-    }
-
-    void updateStats(int keySize, InMemoryIndex.EntryMetadata prevMetadata,
-                     InMemoryIndex.EntryMetadata newMetadata) {
-        if (prevMetadata != null) {
-            var id = prevMetadata.segmentId();
-            segmentStats.compute(id, (segId, existingStats) -> {
-                if (existingStats == null) {
-                    existingStats = new SegmentStats();
-                }
-                existingStats.obsoleteKeyCount++;
-                existingStats.obsoleteDataSize += prevMetadata.valueSize() + keySize;
-                return existingStats;
-            });
-        }
-        segmentStats.compute(newMetadata.segmentId(), (seg, stats) -> {
-            if (stats == null) {
-                stats = new SegmentStats();
-            }
-            stats.totalKeyCount++;
-            stats.totalDataSize += newMetadata.valueSize() + keySize;
-            return stats;
-        });
+        segmentStats.remove(segment.getId());
     }
 
     HashMap<String, SegmentStats> getSegmentStats() {
@@ -206,10 +181,6 @@ class LogStructuredStore {
         }
     }
 
-    Map<String, LogSegment> getSegments() {
-        return segments;
-    }
-
     LogSegment getSegment(String segmentId) {
         return segments.get(segmentId);
     }
@@ -220,6 +191,7 @@ class LogStructuredStore {
         logger.info("Created new segment {}", id);
         var segment = new LogSegment(path);
         segments.put(id, segment);
+        segmentStats.put(id, new SegmentStats());
         return segment;
     }
 

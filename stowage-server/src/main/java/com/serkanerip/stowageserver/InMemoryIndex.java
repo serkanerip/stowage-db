@@ -2,9 +2,10 @@ package com.serkanerip.stowageserver;
 
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 
 import com.serkanerip.stowagecommon.HeapData;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,22 +17,42 @@ class InMemoryIndex {
             return new EntryMetadata(segmentId, entryMetadata.valueSize(),
                 entryMetadata.valueOffset());
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            EntryMetadata that = (EntryMetadata) o;
+            return valueSize == that.valueSize && valueOffset == that.valueOffset
+                && Objects.equals(segmentId, that.segmentId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(segmentId, valueSize, valueOffset);
+        }
     }
 
     private static final Logger logger = LoggerFactory.getLogger(InMemoryIndex.class);
 
     private final HashMap<HeapData, EntryMetadata> index = new HashMap<>();
 
-    private InMemoryIndex() {
+    private final Map<String, SegmentStats> segmentStats;
+
+    private InMemoryIndex(Map<String, SegmentStats> segmentStats) {
+        this.segmentStats = segmentStats;
     }
 
-    static InMemoryIndex emptyIndex() {
-        return new InMemoryIndex();
-    }
-
-    static InMemoryIndex fromLogSegments(Map<String, LogSegment> segments) {
+    static InMemoryIndex fromLogSegments(
+        Map<String, LogSegment> segments,
+        Map<String, SegmentStats> segmentStats
+    ) {
         var startTime = System.currentTimeMillis();
-        var instance = new InMemoryIndex();
+        var instance = new InMemoryIndex(segmentStats);
         segments.keySet().stream().sorted(Comparator.naturalOrder())
             .forEach(segmentId -> {
                 logger.info("Building memory index from segment {}", segmentId);
@@ -59,10 +80,33 @@ class InMemoryIndex {
     /**
      * Returns previous metadata for this key if any
      */
-    EntryMetadata put(HeapData key, EntryMetadata metadata) {
+    void put(HeapData key, EntryMetadata metadata) {
         var previousMetadata = index.get(key);
         index.put(key, metadata);
-        return previousMetadata;
+        updateStats(key.size(), previousMetadata, metadata);
+    }
+
+    void updateStats(int keySize, InMemoryIndex.EntryMetadata prevMetadata,
+                     InMemoryIndex.EntryMetadata newMetadata) {
+        if (prevMetadata != null) {
+            var id = prevMetadata.segmentId();
+            segmentStats.compute(id, (segId, existingStats) -> {
+                if (existingStats == null) {
+                    existingStats = new SegmentStats();
+                }
+                existingStats.obsoleteKeyCount++;
+                existingStats.obsoleteDataSize += prevMetadata.valueSize() + keySize;
+                return existingStats;
+            });
+        }
+        segmentStats.compute(newMetadata.segmentId(), (seg, stats) -> {
+            if (stats == null) {
+                stats = new SegmentStats();
+            }
+            stats.totalKeyCount++;
+            stats.totalDataSize += newMetadata.valueSize() + keySize;
+            return stats;
+        });
     }
 
 }
