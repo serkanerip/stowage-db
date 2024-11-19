@@ -15,6 +15,10 @@ class ConfigurationLoader {
         }
     }
 
+    public int getDesiredEntryCountBeforeTest() {
+        return Integer.parseInt(properties.getOrDefault("desired_entry_count_before_test", "0").toString());
+    }
+
     public int getThreadCount() {
         return Integer.parseInt(properties.getOrDefault("threads", "4").toString());
     }
@@ -73,6 +77,7 @@ class ConfigurationLoader {
             getThreadCount(),
             getDurationSeconds(), getWarmupDuration(),
             getKeySize(), getKeyCount(),
+            getDesiredEntryCountBeforeTest(),
             getValueSize(), getValueCount(),
             getReadRatio(), getWriteRatio(),
             getRequestCount()

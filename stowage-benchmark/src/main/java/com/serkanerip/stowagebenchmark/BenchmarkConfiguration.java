@@ -9,6 +9,7 @@ record BenchmarkConfiguration(
     int warmupDurationSeconds,
     int keySize,
     int keyCount,
+    int desiredEntryCountBeforeTest,
     int valueSize,
     int valueCount,
     double readRatio,
@@ -23,6 +24,7 @@ record BenchmarkConfiguration(
         configMap.put("warmupDurationSeconds", warmupDurationSeconds);
         configMap.put("keySize", keySize);
         configMap.put("keyCount", keyCount);
+        configMap.put("desiredEntryCountBeforeTest", desiredEntryCountBeforeTest);
         configMap.put("valueSize", valueSize);
         configMap.put("valueCount", valueCount);
         configMap.put("readRatio", readRatio);

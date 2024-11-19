@@ -3,7 +3,6 @@ package com.serkanerip.stowagebenchmark;
 import java.security.SecureRandom;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,22 +22,50 @@ class Benchmark {
     private final BenchmarkConfiguration config;
 
     private final Client client;
-    private final ExecutorService executor;
+    private final Thread[] workers;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicInteger completedRequests = new AtomicInteger(0);
     private final ThreadLocal<Random> threadLocalRandom = ThreadLocal.withInitial(Random::new);
     private final byte[][] keys;
     private final byte[][] values;
+    private static AtomicInteger readCounter = new AtomicInteger(0);
+    private static AtomicInteger writeCounter = new AtomicInteger(0);
 
     Benchmark(BenchmarkConfiguration benchmarkConfiguration) {
         this.config = benchmarkConfiguration;
 
         logger.info("Connecting to the {}:{}", HOST, PORT);
         this.client = new Client(HOST, PORT);  // Replace with configurable host/port
-        this.executor = Executors.newFixedThreadPool(config.threadCount());
+        this.workers = new Thread[config.threadCount()];
         this.keys = new byte[config.keyCount()][];
         this.values = new byte[config.valueCount()][];
         populateKeysAndValues();
+        fillServerWithDesiredEntryCount();
+    }
+
+    private void fillServerWithDesiredEntryCount() {
+        logger.info("Filling server with {} entry", config.desiredEntryCountBeforeTest());
+        try (var es = Executors.newFixedThreadPool(config.threadCount())) {
+            SecureRandom random = new SecureRandom();
+            var entryCountToCreate =
+                Math.min(config.desiredEntryCountBeforeTest(), config.keyCount());
+            var countDownLatch = new CountDownLatch(entryCountToCreate);
+            for (int i = 0; i < entryCountToCreate; i++) {
+                var key = keys[i];
+                es.submit(() -> {
+                    client.put(key, values[random.nextInt(values.length)]);
+                    countDownLatch.countDown();
+                });
+            }
+            try {
+                countDownLatch.await();
+            } catch (InterruptedException e) {
+                logger.error("Interrupted while waiting for keys to be created", e);
+                System.exit(1);
+            }
+            es.shutdown();
+        }
+        logger.info("Finished filling server with {} entry", config.desiredEntryCountBeforeTest());
     }
 
     void populateKeysAndValues() {
@@ -63,12 +90,12 @@ class Benchmark {
         if (config.warmupDurationSeconds() > 0) {
             logger.info("Starting warm-up phase for {} seconds...", config.warmupDurationSeconds());
             runForDuration(config.warmupDurationSeconds(),
-                new Histogram(1, TimeUnit.SECONDS.toNanos(10), 3), true);
+                new Histogram(TimeUnit.SECONDS.toNanos(10), 3), true);
             logger.info("Warm-up completed.");
         }
 
         // Main benchmark
-        Histogram latencyHistogram = new Histogram(1, TimeUnit.SECONDS.toNanos(10), 3);
+        Histogram latencyHistogram = new Histogram(TimeUnit.SECONDS.toNanos(10), 3);
         long testStartTime = System.nanoTime();
 
         if (config.durationSeconds() > 0) {
@@ -82,6 +109,7 @@ class Benchmark {
         long duration = System.nanoTime() - testStartTime;
         shutdown();
         printResults(latencyHistogram, duration);
+        logger.info("Performed Read count: {} Write count: {}", readCounter.get(), writeCounter.get());
 
         var result = new ResultManager.BenchmarkResult(
             completedRequests.get(),
@@ -101,13 +129,14 @@ class Benchmark {
         CountDownLatch latch = new CountDownLatch(config.threadCount());
 
         for (int i = 0; i < config.threadCount(); i++) {
-            executor.submit(() -> {
+            workers[i] = Thread.ofVirtual().start(() -> {
                 try {
                     while (System.nanoTime() < endTime && running.get()) {
                         processRequest(histogram, isWarmup);
                     }
                 } finally {
                     latch.countDown();
+                    threadLocalRandom.remove();
                 }
             });
         }
@@ -123,12 +152,15 @@ class Benchmark {
     private void runForRequestCount(Histogram histogram) {
         CountDownLatch latch = new CountDownLatch(config.requestCount());
 
-        for (int i = 0; i < config.requestCount(); i++) {
-            executor.submit(() -> {
+        for (int i = 0; i < config.threadCount(); i++) {
+            workers[i] = Thread.ofVirtual().start(() -> {
                 try {
-                    processRequest(histogram, false);
+                    for (int c = 0; c < config.requestCount(); c++) {
+                        processRequest(histogram, false);
+                    }
                 } finally {
                     latch.countDown();
+                    threadLocalRandom.remove();
                 }
             });
         }
@@ -150,9 +182,11 @@ class Benchmark {
             var key = keys[random.nextInt(keys.length)];
 
             if (action < config.readRatio()) {
+                readCounter.incrementAndGet();
                 client.get(key);
             } else {
                 client.put(key, values[random.nextInt(values.length)]);
+                writeCounter.incrementAndGet();
             }
 
             if (!isWarmup) {
@@ -214,14 +248,11 @@ class Benchmark {
 
     private void shutdown() {
         running.set(false);
-        executor.shutdown();
         try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
+            for (var worker : workers) {
+                worker.join(5000);
             }
-            threadLocalRandom.remove();
         } catch (InterruptedException e) {
-            executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
         client.shutdown();

@@ -31,13 +31,9 @@ class DataSegment {
 
     private final String segmentId;
 
-    private long dataSize = 0L;
+    private long dataSize;
 
-    private long indexSize = 0L;
-
-    public FileChannel getIndexChannel() {
-        return indexChannel;
-    }
+    private long indexSize;
 
     public void decommission() {
         log.info("Decommissioning segment {}", segmentId);
@@ -73,6 +69,8 @@ class DataSegment {
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
             this.indexChannel = FileChannel.open(indexPath,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
+            this.dataSize = fileChannel.size();
+            this.indexSize = indexChannel.size();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -93,21 +91,47 @@ class DataSegment {
     public byte[] read(InMemoryIndex.EntryMetadata entryMetadata) {
         var valSize = entryMetadata.valueSize();
         var valueOffset = entryMetadata.valueOffset();
+
+        // Pre-conditions check
+        if (valSize < 0) {
+            throw new IllegalArgumentException("Value size cannot be negative: " + valSize);
+        }
+        if (valSize == 0) {
+            return new byte[0];
+        }
+
         var buff = ByteBuffer.allocateDirect(valSize);
         try {
-            fileChannel.read(buff, valueOffset);
-            buff.flip();
-            if (buff.remaining() != valSize) {
-                throw new DataEntryReadFailedException(
-                    "Failed to read data entry expectedSize=%d, got=%d".formatted(
-                        valSize, buff.remaining()
-                    ));
+            int bytesRead = 0;
+            int totalBytesRead = 0;
+
+            // Handle partial reads
+            int readCount = 0;
+            while (totalBytesRead < valSize) {
+                bytesRead = fileChannel.read(buff, valueOffset + totalBytesRead);
+
+                if (bytesRead == -1) {  // EOF reached
+                    throw new DataEntryReadFailedException(
+                        "Unexpected EOF: expectedSize=%d, got=%d".formatted(
+                            valSize, bytesRead
+                        ));
+                }
+
+                totalBytesRead += bytesRead;
+                readCount++;
             }
+            if (readCount > 1) {
+                log.info("Had to do {} read to get full data", readCount);
+            }
+
+            buff.flip();
             var readValue = new byte[valSize];
             buff.get(readValue);
             return readValue;
-        } catch (IOException | BufferUnderflowException e) {
-            throw new DataEntryReadFailedException(e);
+        } catch (IOException e) {
+            throw new DataEntryReadFailedException("Failed to read data entry", e);
+        } catch (BufferUnderflowException e) {
+            throw new DataEntryReadFailedException("Buffer underflow while reading data entry", e);
         }
     }
 

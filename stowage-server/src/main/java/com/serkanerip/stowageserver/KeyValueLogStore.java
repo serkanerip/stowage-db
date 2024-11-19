@@ -83,22 +83,16 @@ class KeyValueLogStore {
             this.activeSegment = segmentStore.createEmptySegment();
         }
         var segmentsToDecommission = new ArrayList<String>();
-        var segmentsToCompact = new ArrayList<String>();
         for (Map.Entry<String, SegmentStats> statsEntry : segmentStore.getSegmentStats()
             .entrySet()) {
             if (activeSegment.getSegmentId().equals(statsEntry.getKey())) {
                 continue;
             }
-            if (statsEntry.getValue().obsoleteDataRatio() >= 0.6) {
-                if (statsEntry.getValue().obsoleteDataRatio() == 1.0) {
-                    segmentsToDecommission.add(statsEntry.getKey());
-                } else {
-                    segmentsToCompact.add(statsEntry.getKey());
-                }
+            if (statsEntry.getValue().obsoleteDataRatio() == 1.0) {
+                segmentsToDecommission.add(statsEntry.getKey());
             }
         }
         segmentsToDecommission.forEach(segmentStore::decommission);
-        segmentsToCompact.forEach(id -> compactSegment(segmentStore.getSegment(id)));
     }
 
     private void compactSegment(DataSegment segment) {
