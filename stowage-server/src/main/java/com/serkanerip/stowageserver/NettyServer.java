@@ -24,10 +24,10 @@ class NettyServer {
     private NioEventLoopGroup workerGroup;
     private Channel serverChannel;
     private final ChannelGroup clientChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-    private final StoreQueue storeQueue;
+    private final StoreOperationHandler storeOperationHandler;
 
-    NettyServer(StoreQueue storeQueue) {
-        this.storeQueue = storeQueue;
+    NettyServer(StoreOperationHandler storeOperationHandler) {
+        this.storeOperationHandler = storeOperationHandler;
     }
 
     void start(String inetHost, int port) {
@@ -45,7 +45,8 @@ class NettyServer {
                     protected void initChannel(SocketChannel ch) {
                         logger.debug("Initializing channel {}", ch);
                         ch.pipeline().addLast(
-                            new TransportMessageCodec(), new ServerInboundHandler(clientChannels, storeQueue)
+                            new TransportMessageCodec(), new ServerInboundHandler(clientChannels,
+                                storeOperationHandler)
                         );
                     }
                 });

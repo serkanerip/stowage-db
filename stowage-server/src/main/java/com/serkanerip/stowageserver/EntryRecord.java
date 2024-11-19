@@ -1,12 +1,12 @@
 package com.serkanerip.stowageserver;
 
-import static com.serkanerip.stowageserver.KeyValueLogStore.TOMBSTONE_MARKER;
+import static com.serkanerip.stowageserver.LogStructuredStore.TOMBSTONE_MARKER;
 
 import java.nio.ByteBuffer;
 
 import com.serkanerip.stowagecommon.HeapData;
 
-class DataEntry {
+class EntryRecord {
 
     private final HeapData key;
 
@@ -14,7 +14,7 @@ class DataEntry {
 
     private final boolean deleted;
 
-    public DataEntry(HeapData key, HeapData value) {
+    public EntryRecord(HeapData key, HeapData value) {
         this.key = key;
         this.value = value;
         this.deleted = TOMBSTONE_MARKER.equals(value);

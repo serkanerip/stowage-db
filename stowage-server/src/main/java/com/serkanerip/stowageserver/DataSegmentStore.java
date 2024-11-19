@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 public class DataSegmentStore {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSegmentStore.class);
-    private final Map<String, DataSegment> segments = new HashMap<>();
+    private final Map<String, LogSegment> segments = new HashMap<>();
     private final ServerOptions options;
     private final HashMap<String, SegmentStats> segmentStats = new HashMap<>();
     private final Thread monitoringThread;
@@ -37,7 +37,7 @@ public class DataSegmentStore {
 
     void shutdown() {
         monitoringThread.interrupt();
-        segments.values().forEach(DataSegment::shutdown);
+        segments.values().forEach(LogSegment::shutdown);
     }
 
     void decommission(String segmentId) {
@@ -107,38 +107,38 @@ public class DataSegmentStore {
             segments.putAll(
                 Files.list(dataRootPath).filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().endsWith(".data"))
-                    .collect(Collectors.toMap(Utils::extractSegmentId, DataSegment::new))
+                    .collect(Collectors.toMap(Utils::extractSegmentId, LogSegment::new))
             );
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    Map<String, DataSegment> getSegments() {
+    Map<String, LogSegment> getSegments() {
         return segments;
     }
 
-    DataSegment getSegment(String segmentId) {
+    LogSegment getSegment(String segmentId) {
         return segments.get(segmentId);
     }
 
-    DataSegment createEmptySegment() {
+    LogSegment createEmptySegment() {
         var id = System.currentTimeMillis() + "";
         var path = options.dataRootPath().resolve("%s.data".formatted(id));
         logger.info("Created new segment {}", id);
-        var segment = new DataSegment(path);
+        var segment = new LogSegment(path);
         segments.put(id, segment);
         return segment;
     }
 
-    DataSegment createCompactedSegmentFor(DataSegment segment) {
+    LogSegment createCompactedSegmentFor(LogSegment segment) {
         var id = segment.getSegmentId();
         var path = options.dataRootPath().resolve("%s-compact.data".formatted(id));
         logger.info("Created compacted segment for segment {}", id);
-        return new DataSegment(path);
+        return new LogSegment(path);
     }
 
-    void replaceSegmentWithCompacted(DataSegment segment, DataSegment compactSegment,
+    void replaceSegmentWithCompacted(LogSegment segment, LogSegment compactSegment,
                                      SegmentStats newSegmentStats) {
         var removedSegment = segments.remove(segment.getSegmentId());
         removedSegment.shutdown();

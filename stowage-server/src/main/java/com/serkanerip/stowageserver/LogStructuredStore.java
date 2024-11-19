@@ -10,9 +10,9 @@ import com.serkanerip.stowagecommon.HeapData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class KeyValueLogStore {
+class LogStructuredStore {
 
-    private static final Logger logger = LoggerFactory.getLogger(KeyValueLogStore.class);
+    private static final Logger logger = LoggerFactory.getLogger(LogStructuredStore.class);
 
     public static final HeapData TOMBSTONE_MARKER = new HeapData(new byte[] {});
 
@@ -20,11 +20,11 @@ class KeyValueLogStore {
 
     private final DataSegmentStore segmentStore;
 
-    private DataSegment activeSegment;
+    private LogSegment activeSegment;
 
     private Thread monitorThread;
 
-    public KeyValueLogStore(
+    public LogStructuredStore(
         InMemoryIndex inMemoryIndex, DataSegmentStore segmentStore
     ) {
         this.inMemoryIndex = inMemoryIndex;
@@ -69,7 +69,7 @@ class KeyValueLogStore {
     }
 
     public void put(HeapData key, HeapData value) {
-        var dataEntry = new DataEntry(key, value);
+        var dataEntry = new EntryRecord(key, value);
         var metadata = activeSegment.write(dataEntry);
         var inMemoryMetadata = InMemoryIndex.EntryMetadata.fromPersistentEntryMetadata(
             activeSegment.getSegmentId(), metadata
@@ -79,7 +79,7 @@ class KeyValueLogStore {
     }
 
     private void afterPut() {
-        if (activeSegment.dataSize() >= DataSegment.SEGMENT_MAX_SIZE_IN_BYTES) {
+        if (activeSegment.dataSize() >= LogSegment.SEGMENT_MAX_SIZE_IN_BYTES) {
             this.activeSegment = segmentStore.createEmptySegment();
         }
         var segmentsToDecommission = new ArrayList<String>();
@@ -95,7 +95,7 @@ class KeyValueLogStore {
         segmentsToDecommission.forEach(segmentStore::decommission);
     }
 
-    private void compactSegment(DataSegment segment) {
+    private void compactSegment(LogSegment segment) {
         var startTime = System.currentTimeMillis();
         logger.info("Compacting segment {}", segment);
         var compactSegment = segmentStore.createCompactedSegmentFor(segment);

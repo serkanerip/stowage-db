@@ -6,19 +6,19 @@ import org.slf4j.LoggerFactory;
 public class StowageServer {
 
     private static final Logger logger = LoggerFactory.getLogger(StowageServer.class);
-    private final KeyValueLogStore store;
+    private final LogStructuredStore store;
 
     private final NettyServer nettyServer;
-    private final StoreQueue storeQueue;
+    private final StoreOperationHandler storeOperationHandler;
     private final ServerOptions serverOptions;
 
     public StowageServer(ServerOptions serverOptions) {
         this.serverOptions = serverOptions;
         var segmentStore = DataSegmentStore.create(serverOptions);
         var inMemoryIndex = InMemoryIndex.create(segmentStore);
-        this.store = new KeyValueLogStore(inMemoryIndex, segmentStore);
-        this.storeQueue = new StoreQueue(store);
-        this.nettyServer = new NettyServer(storeQueue);
+        this.store = new LogStructuredStore(inMemoryIndex, segmentStore);
+        this.storeOperationHandler = new StoreOperationHandler(store);
+        this.nettyServer = new NettyServer(storeOperationHandler);
     }
 
     public void start() {
@@ -32,7 +32,7 @@ public class StowageServer {
         logTime("Server shut down", () -> {
             logger.info("Shutting down server");
             nettyServer.shutdown();
-            storeQueue.shutdown();
+            storeOperationHandler.shutdown();
             store.shutdown();
         });
     }

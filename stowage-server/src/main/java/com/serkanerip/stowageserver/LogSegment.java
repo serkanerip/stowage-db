@@ -15,11 +15,11 @@ import com.serkanerip.stowageserver.exception.DataEntryWriteFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class DataSegment {
+class LogSegment {
 
     public static final long SEGMENT_MAX_SIZE_IN_BYTES = 1L << 30;
 
-    private static final Logger log = LoggerFactory.getLogger(DataSegment.class);
+    private static final Logger log = LoggerFactory.getLogger(LogSegment.class);
 
     private final FileChannel fileChannel;
 
@@ -60,7 +60,7 @@ class DataSegment {
         return segmentId;
     }
 
-    public DataSegment(Path dataPath) {
+    public LogSegment(Path dataPath) {
         try {
             this.dataPath = dataPath;
             this.segmentId = Utils.extractSegmentId(dataPath);
@@ -135,12 +135,12 @@ class DataSegment {
         }
     }
 
-    public EntryMetadata write(DataEntry dataEntry) {
+    public EntryMetadata write(EntryRecord entryRecord) {
         try {
-            var valueOffset = dataSize + 4 + dataEntry.getKey().size() + 4;
-            dataSize += fileChannel.write(dataEntry.serialize(), dataSize);
+            var valueOffset = dataSize + 4 + entryRecord.getKey().size() + 4;
+            dataSize += fileChannel.write(entryRecord.serialize(), dataSize);
             var metadata = new EntryMetadata(
-                dataEntry.getKey().toByteArray(), dataEntry.getValue().size(), valueOffset
+                entryRecord.getKey().toByteArray(), entryRecord.getValue().size(), valueOffset
             );
             indexSize += indexChannel.write(metadata.serialize(), indexSize);
             return metadata;

@@ -21,11 +21,11 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
 
     private final ChannelGroup channelGroup;
 
-    private final StoreQueue storeQueue;
+    private final StoreOperationHandler storeOperationHandler;
 
-    public ServerInboundHandler(ChannelGroup channelGroup, StoreQueue storeQueue) {
+    public ServerInboundHandler(ChannelGroup channelGroup, StoreOperationHandler storeOperationHandler) {
         this.channelGroup = channelGroup;
-        this.storeQueue = storeQueue;
+        this.storeOperationHandler = storeOperationHandler;
     }
 
     @Override
@@ -52,15 +52,15 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
         switch (message.getType()) {
             case PUT -> {
                 var request = PutRequest.decode(payload);
-                storeQueue.addToQueue(request, message.getCorrelationId(), ctx.channel());
+                storeOperationHandler.addToQueue(request, message.getCorrelationId(), ctx.channel());
             }
             case GET -> {
                 var request = GetRequest.decode(payload);
-                storeQueue.addToQueue(request, message.getCorrelationId(), ctx.channel());
+                storeOperationHandler.addToQueue(request, message.getCorrelationId(), ctx.channel());
             }
             case DELETE -> {
                 var request = DeleteRequest.decode(payload);
-                storeQueue.addToQueue(request, message.getCorrelationId(), ctx.channel());
+                storeOperationHandler.addToQueue(request, message.getCorrelationId(), ctx.channel());
             }
             default -> {
                 logger.error("Received message of unknown type: {}", type);
