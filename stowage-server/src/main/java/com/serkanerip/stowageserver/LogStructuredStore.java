@@ -111,13 +111,12 @@ class LogStructuredStore {
             if (activeSegment.getId().equals(statsEntry.getKey())) {
                 continue;
             }
-            if (statsEntry.getValue().obsoleteDataRatio() >= 0.30) {
+            if (statsEntry.getValue().obsoleteDataRatio() >= options.compactionThreshold()) {
                 if (statsEntry.getValue().obsoleteDataRatio() == 1.0) {
                     segmentsToDecommission.add(statsEntry.getKey());
                 } else {
                     compacter.offer(statsEntry.getKey());
                 }
-
             }
         }
         segmentsToDecommission.forEach(this::decommission);

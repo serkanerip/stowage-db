@@ -21,6 +21,7 @@ public class StowageServer {
 
     public void start() {
         logTime("Server start", () -> {
+            logger.info("Starting server with options: {}", serverOptions);
             store.init();
             nettyServer.start(serverOptions.inetHost(), serverOptions.inetPort());
         });

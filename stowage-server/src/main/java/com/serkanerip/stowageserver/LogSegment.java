@@ -50,7 +50,9 @@ class LogSegment {
         }
     }
 
-    PersistentEntryMetadata transferFrom(FileChannel sourceChannel, PersistentEntryMetadata metadata) throws IOException {
+    PersistentEntryMetadata transferFrom(
+        FileChannel sourceChannel, PersistentEntryMetadata metadata
+    ) throws IOException {
         var readPos = metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
         var readCount = Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
         var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
