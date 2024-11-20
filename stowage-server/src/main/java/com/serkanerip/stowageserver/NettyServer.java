@@ -3,6 +3,7 @@ package com.serkanerip.stowageserver;
 import com.serkanerip.stowagecommon.TransportMessageCodec;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelInboundHandler;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.group.ChannelGroup;
@@ -19,15 +20,15 @@ import org.slf4j.LoggerFactory;
 class NettyServer {
 
     private static final Logger logger = LoggerFactory.getLogger(NettyServer.class);
+    private final ChannelInboundHandler inboundHandler;
 
     private NioEventLoopGroup bossGroup;
     private NioEventLoopGroup workerGroup;
     private Channel serverChannel;
     private final ChannelGroup clientChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-    private final StoreOperationHandler storeOperationHandler;
 
-    NettyServer(StoreOperationHandler storeOperationHandler) {
-        this.storeOperationHandler = storeOperationHandler;
+    NettyServer(ChannelInboundHandler inboundHandler) {
+        this.inboundHandler = inboundHandler;
     }
 
     void start(String inetHost, int port) {
@@ -45,9 +46,9 @@ class NettyServer {
                     protected void initChannel(SocketChannel ch) {
                         logger.debug("Initializing channel {}", ch);
                         ch.pipeline().addLast(
-                            new TransportMessageCodec(), new ServerInboundHandler(clientChannels,
-                                storeOperationHandler)
+                            new TransportMessageCodec(), inboundHandler
                         );
+                        clientChannels.add(ch);
                     }
                 });
 

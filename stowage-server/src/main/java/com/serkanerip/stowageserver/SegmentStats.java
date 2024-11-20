@@ -1,19 +1,35 @@
 package com.serkanerip.stowageserver;
 
-class SegmentStats {
+public class SegmentStats {
     long totalKeyCount;
     long totalDataSize;
     long obsoleteKeyCount;
     long obsoleteDataSize;
 
-    double obsoleteKeyRatio() {
+    public long getTotalKeyCount() {
+        return totalKeyCount;
+    }
+
+    public long getTotalDataSize() {
+        return totalDataSize;
+    }
+
+    public long getObsoleteKeyCount() {
+        return obsoleteKeyCount;
+    }
+
+    public long getObsoleteDataSize() {
+        return obsoleteDataSize;
+    }
+
+    public double obsoleteKeyRatio() {
         if (obsoleteKeyCount == 0) {
             return 0;
         }
         return (double) obsoleteKeyCount / totalKeyCount;
     }
 
-    double obsoleteDataRatio() {
+    public double obsoleteDataRatio() {
         if (obsoleteDataSize == 0) {
             return 0;
         }

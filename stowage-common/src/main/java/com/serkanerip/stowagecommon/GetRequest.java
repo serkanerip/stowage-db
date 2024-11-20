@@ -4,9 +4,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 public class GetRequest implements MessagePayload {
-    private final HeapData key;
+    private final byte[] key;
 
-    public GetRequest(HeapData key) {
+    public GetRequest(byte[] key) {
         this.key = key;
     }
 
@@ -14,10 +14,10 @@ public class GetRequest implements MessagePayload {
         var keySize = buf.readInt();
         var key = new byte[keySize];
         buf.readBytes(key);
-        return new GetRequest(new HeapData(key));
+        return new GetRequest(key);
     }
 
-    public HeapData getKey() {
+    public byte[] getKey() {
         return key;
     }
 
@@ -29,8 +29,8 @@ public class GetRequest implements MessagePayload {
     @Override
     public ByteBuf encode() {
         var buffer = Unpooled.buffer();
-        buffer.writeInt(key.size());
-        buffer.writeBytes(key.toByteArray());
+        buffer.writeInt(key.length);
+        buffer.writeBytes(key);
         return buffer;
     }
 }

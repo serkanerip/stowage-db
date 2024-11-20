@@ -12,20 +12,20 @@ import org.slf4j.LoggerFactory;
 class LogSegmentCompacter {
 
     private static final Logger logger = LoggerFactory.getLogger(LogSegmentCompacter.class);
-    private final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<Long> queue = new LinkedBlockingQueue<>();
     private final Thread thread;
-    private final LogStructuredStore store;
+    private final StowageDB store;
     private volatile boolean running = true;
-    private static final String STOP_FLAG = "STOWAGE_STOP_QUEUE";
+    private static final Long STOP_FLAG = -1L;
 
-    LogSegmentCompacter(LogStructuredStore store) {
+    LogSegmentCompacter(StowageDB store) {
         this.store = store;
         this.thread = Thread.ofPlatform()
             .name("compaction")
             .start((this::processQueue));
     }
 
-    void offer(String segmentId) {
+    void offer(Long segmentId) {
         logger.info("Offering segment {}", segmentId);
         if (!queue.contains(segmentId) && !queue.offer(segmentId)) {
                 logger.warn("Could not add segment {} to queue", segmentId);
@@ -50,7 +50,7 @@ class LogSegmentCompacter {
                 if (segmentId.equals(STOP_FLAG)) {
                     continue;
                 }
-                compactWithLock(store.getSegment(segmentId));
+                compactWithLock(segmentId);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.warn("Interrupted while compacting segment", e);
@@ -59,11 +59,11 @@ class LogSegmentCompacter {
         }
     }
 
-    private void compactWithLock(LogSegment segment) {
+    private void compactWithLock(Long segmentId) {
         var lock = store.getWriteLock();
         lock.lock();
         try {
-            compactSegment(segment);
+            compactSegment(store.getSegment(segmentId));
         } finally {
             lock.unlock();
         }
@@ -75,7 +75,6 @@ class LogSegmentCompacter {
             return;
         }
         var startTime = System.currentTimeMillis();
-        logger.info("Compacting segment {}", segment.getId());
         var indexIterator = segment.newIndexIterator();
         var segmentDch = segment.getDataChannel();
         var inMemoryIndex = store.getInMemoryIndex();
@@ -100,6 +99,7 @@ class LogSegmentCompacter {
                 }
             }
         }
+        logger.info("Decommissioning compacted segment {}", segment.getId());
         store.decommission(segment.getId());
         logger.info("Compacted segment {} in {} ms", segment.getId(),
             System.currentTimeMillis() - startTime);

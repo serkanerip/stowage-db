@@ -3,14 +3,15 @@ package com.serkanerip.stowageserver;
 import com.serkanerip.stowagecommon.DeleteRequest;
 import com.serkanerip.stowagecommon.ErrorCode;
 import com.serkanerip.stowagecommon.GetRequest;
+import com.serkanerip.stowagecommon.GetResponse;
 import com.serkanerip.stowagecommon.PutRequest;
 import com.serkanerip.stowagecommon.SimpleResponse;
 import com.serkanerip.stowagecommon.TransportMessage;
 import com.serkanerip.stowagecommon.TransportMessageType;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.group.ChannelGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,19 +20,15 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerInboundHandler.class);
 
-    private final ChannelGroup channelGroup;
+    private final StowageDB store;
 
-    private final StoreOperationHandler storeOperationHandler;
-
-    public ServerInboundHandler(ChannelGroup channelGroup, StoreOperationHandler storeOperationHandler) {
-        this.channelGroup = channelGroup;
-        this.storeOperationHandler = storeOperationHandler;
+    public ServerInboundHandler(StowageDB store) {
+        this.store = store;
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
         logger.info("Channel active");
-        channelGroup.add(ctx.channel());
     }
 
     @Override
@@ -43,6 +40,10 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         var message = (TransportMessage) msg;
+        handleMessage(ctx, message);
+    }
+
+    private void handleMessage(ChannelHandlerContext ctx, TransportMessage message) {
         var type = message.getType();
         var size = message.getSize();
 
@@ -52,15 +53,30 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
         switch (message.getType()) {
             case PUT -> {
                 var request = PutRequest.decode(payload);
-                storeOperationHandler.addToQueue(request, message.getCorrelationId(), ctx.channel());
+                store.put(request.getKey(), request.getValue());
+                sendResponse(ctx.channel(), new TransportMessage(
+                    TransportMessageType.SIMPLE_RESPONSE,
+                    message.getCorrelationId(),
+                    new SimpleResponse(true, ErrorCode.NO_ERR).encode()
+                ));
             }
             case GET -> {
                 var request = GetRequest.decode(payload);
-                storeOperationHandler.addToQueue(request, message.getCorrelationId(), ctx.channel());
+                var value = store.get(request.getKey());
+                sendResponse(ctx.channel(), new TransportMessage(
+                    TransportMessageType.GET_RESPONSE,
+                    message.getCorrelationId(),
+                    new GetResponse(value).encode()
+                ));
             }
             case DELETE -> {
                 var request = DeleteRequest.decode(payload);
-                storeOperationHandler.addToQueue(request, message.getCorrelationId(), ctx.channel());
+                store.delete(request.getKey());
+                sendResponse(ctx.channel(), new TransportMessage(
+                    TransportMessageType.SIMPLE_RESPONSE,
+                    message.getCorrelationId(),
+                    new SimpleResponse(true, ErrorCode.NO_ERR).encode()
+                ));
             }
             default -> {
                 logger.error("Received message of unknown type: {}", type);
@@ -72,5 +88,13 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
             }
         }
         payload.release();
+    }
+
+    private void sendResponse(Channel channel, TransportMessage message) {
+        if (channel.isActive()) {
+            channel.writeAndFlush(message);
+        } else {
+            logger.warn("Channel is not active, can't send the response!");
+        }
     }
 }

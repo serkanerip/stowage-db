@@ -15,15 +15,15 @@ class InMemoryIndex {
 
     private final HashMap<HeapData, MemoryEntryMetadata> index = new HashMap<>();
 
-    private final Map<String, SegmentStats> segmentStats;
+    private final Map<Long, SegmentStats> segmentStats;
 
-    private InMemoryIndex(Map<String, SegmentStats> segmentStats) {
+    private InMemoryIndex(Map<Long, SegmentStats> segmentStats) {
         this.segmentStats = segmentStats;
     }
 
     static InMemoryIndex fromLogSegments(
-        Map<String, LogSegment> segments,
-        Map<String, SegmentStats> segmentStats
+        Map<Long, LogSegment> segments,
+        Map<Long, SegmentStats> segmentStats
     ) {
         var startTime = System.currentTimeMillis();
         var instance = new InMemoryIndex(segmentStats);
@@ -83,9 +83,10 @@ class InMemoryIndex {
         });
     }
 
-    record MemoryEntryMetadata(String segmentId, int valueSize, long valueOffset) {
+    record MemoryEntryMetadata(Long segmentId, int valueSize, long valueOffset) {
         static MemoryEntryMetadata fromPersistedEntryMetadata(
-            String segmentId, PersistentEntryMetadata persistentEntryMetadata) {
+            Long segmentId, PersistentEntryMetadata persistentEntryMetadata
+        ) {
             return new MemoryEntryMetadata(segmentId, persistentEntryMetadata.valueSize(),
                 persistentEntryMetadata.valueOffset());
         }

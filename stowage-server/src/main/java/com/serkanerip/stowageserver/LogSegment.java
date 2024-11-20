@@ -17,8 +17,6 @@ import org.slf4j.LoggerFactory;
 
 class LogSegment {
 
-    public static final long SEGMENT_MAX_SIZE_IN_BYTES = 1L << 30;
-
     private static final Logger logger = LoggerFactory.getLogger(LogSegment.class);
 
     private final FileChannel fileChannel;
@@ -29,7 +27,7 @@ class LogSegment {
 
     private final FileChannel indexChannel;
 
-    private final String segmentId;
+    private final long segmentId;
 
     private long dataSize;
 
@@ -65,7 +63,6 @@ class LogSegment {
     }
 
     public void decommission() {
-        logger.info("Decommissioning segment {}", segmentId);
         try {
             shutdown();
             Files.delete(dataPath);
@@ -87,7 +84,7 @@ class LogSegment {
         }
     }
 
-    public String getId() {
+    public Long getId() {
         return segmentId;
     }
 

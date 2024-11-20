@@ -6,7 +6,7 @@ class Utils {
 
     private Utils() {}
 
-    public static String extractSegmentId(Path path) {
-        return path.getFileName().toString().split(".data")[0];
+    public static long extractSegmentId(Path path) {
+        return Long.parseLong(path.getFileName().toString().split(".data")[0]);
     }
 }

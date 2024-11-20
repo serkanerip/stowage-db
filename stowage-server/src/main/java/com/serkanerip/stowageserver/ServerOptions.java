@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 
 public record ServerOptions(
-    String inetHost, int inetPort, Path dataRootPath, Double compactionThreshold
+    String inetHost, int inetPort, Path dataRootPath, Double compactionThreshold, long maxFileSize
 ) {
     private static final String ENV_PREFIX = "STOWAGE_";
     private static final String PROP_PREFIX = "stowage.";
@@ -15,7 +15,8 @@ public record ServerOptions(
         "inetHost", "localhost",
         "inetPort", 3030,
         "dataRootPath", "./stowage-data",
-        "compactionThreshold", 0.5
+        "compactionThreshold", 0.5,
+        "maxFileSize", 1024 * 1024 * 1024
     );
 
     public static ServerOptions fromEnvironmentOrProperties() {
@@ -80,6 +81,7 @@ public record ServerOptions(
         private int inetPort = (int) DEFAULT_VALUES.get("inetPort");
         private Path dataRootPath = Path.of((String) DEFAULT_VALUES.get("dataRootPath"));
         private double compactionThreshold = (double) DEFAULT_VALUES.get("compactionThreshold");
+        private long maxFileSize = (long) DEFAULT_VALUES.get("maxFileSize");
 
         public Builder inetHost(String inetHost) {
             this.inetHost = inetHost;
@@ -88,6 +90,11 @@ public record ServerOptions(
 
         public Builder inetPort(int inetPort) {
             this.inetPort = inetPort;
+            return this;
+        }
+
+        public Builder maxFileSize(long size) {
+            this.maxFileSize = size;
             return this;
         }
 
@@ -102,7 +109,9 @@ public record ServerOptions(
         }
 
         public ServerOptions build() {
-            return new ServerOptions(inetHost, inetPort, dataRootPath, compactionThreshold);
+            return new ServerOptions(
+                inetHost, inetPort, dataRootPath, compactionThreshold, maxFileSize
+            );
         }
     }
 }
