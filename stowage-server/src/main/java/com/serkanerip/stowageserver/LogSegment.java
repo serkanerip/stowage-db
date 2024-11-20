@@ -19,11 +19,11 @@ class LogSegment {
 
     public static final long SEGMENT_MAX_SIZE_IN_BYTES = 1L << 30;
 
-    private static final Logger log = LoggerFactory.getLogger(LogSegment.class);
+    private static final Logger logger = LoggerFactory.getLogger(LogSegment.class);
 
     private final FileChannel fileChannel;
 
-    final Path dataPath;
+    private final Path dataPath;
 
     private final Path indexPath;
 
@@ -32,49 +32,6 @@ class LogSegment {
     private final String segmentId;
 
     private long dataSize;
-
-    private long indexSize;
-
-    EntryMetadata transferFrom(FileChannel sourceChannel, EntryMetadata metadata) throws IOException {
-        var readPos = metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
-        var readCount = Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
-        var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
-        dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
-        var newMetadata = new EntryMetadata(
-            metadata.key(), metadata.valueSize(), dataSize + Integer.BYTES + metadata.key().length
-        );
-        indexSize += indexChannel.write(newMetadata.serialize(), indexSize);
-        return new EntryMetadata(
-            metadata.key(), metadata.valueSize(), newValOffset
-        );
-    }
-
-    public void decommission() {
-        log.info("Decommissioning segment {}", segmentId);
-        try {
-            shutdown();
-            Files.delete(dataPath);
-            Files.delete(indexPath);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    public void shutdown() {
-        log.info("Shutting down DataSegment");
-        try {
-            indexChannel.force(true);
-            fileChannel.force(true);
-            indexChannel.close();
-            fileChannel.close();
-        } catch (IOException e) {
-            log.error("Error while shutting down data segment", e);
-        }
-    }
-
-    public String getId() {
-        return segmentId;
-    }
 
     public LogSegment(Path dataPath) {
         try {
@@ -86,29 +43,67 @@ class LogSegment {
             this.indexChannel = FileChannel.open(indexPath,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
             this.dataSize = fileChannel.size();
-            this.indexSize = indexChannel.size();
             fileChannel.position(dataSize);
-            indexChannel.position(indexSize);
+            indexChannel.position(indexChannel.size());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    PersistentEntryMetadata transferFrom(FileChannel sourceChannel, PersistentEntryMetadata metadata) throws IOException {
+        var readPos = metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
+        var readCount = Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
+        var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
+        dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
+        var newMetadata = new PersistentEntryMetadata(
+            metadata.key(), metadata.valueSize(), newValOffset
+        );
+        indexChannel.write(newMetadata.serialize());
+        return newMetadata;
+    }
+
+    public void decommission() {
+        logger.info("Decommissioning segment {}", segmentId);
+        try {
+            shutdown();
+            Files.delete(dataPath);
+            Files.delete(indexPath);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public void shutdown() {
+        logger.info("Shutting down DataSegment");
+        try {
+            indexChannel.force(true);
+            fileChannel.force(true);
+            indexChannel.close();
+            fileChannel.close();
+        } catch (IOException e) {
+            logger.error("Error while shutting down data segment", e);
+        }
+    }
+
+    public String getId() {
+        return segmentId;
     }
 
     public FileChannel getDataChannel() {
         return fileChannel;
     }
 
+    long getDataSize() {
+        return dataSize;
+    }
+
     public IndexChannelIterator newIndexIterator() {
         return new IndexChannelIterator(indexChannel);
     }
 
-    public long dataSize() {
-        return dataSize;
-    }
-
-    public byte[] read(InMemoryIndex.EntryMetadata entryMetadata) {
-        var valSize = entryMetadata.valueSize();
-        var valueOffset = entryMetadata.valueOffset();
+    public byte[] read(InMemoryIndex.MemoryEntryMetadata memoryEntryMetadata) {
+        var valSize = memoryEntryMetadata.valueSize();
+        var valueOffset = memoryEntryMetadata.valueOffset();
 
         // Pre-conditions check
         if (valSize < 0) {
@@ -139,7 +134,7 @@ class LogSegment {
                 readCount++;
             }
             if (readCount > 1) {
-                log.info("Had to do {} read to get full data", readCount);
+                logger.info("Had to do {} read to get full data", readCount);
             }
 
             buff.flip();
@@ -153,21 +148,21 @@ class LogSegment {
         }
     }
 
-    public EntryMetadata write(EntryRecord entryRecord) {
+    public PersistentEntryMetadata write(EntryRecord entryRecord) {
         try {
-            var valueOffset = dataSize + 4 + entryRecord.getKey().size() + 4;
+            var valueOffset = dataSize + Integer.BYTES + entryRecord.getKey().size() + Integer.BYTES;
             dataSize += fileChannel.write(entryRecord.serialize());
-            var metadata = new EntryMetadata(
+            var metadata = new PersistentEntryMetadata(
                 entryRecord.getKey().toByteArray(), entryRecord.getValue().size(), valueOffset
             );
-            indexSize += indexChannel.write(metadata.serialize());
+            indexChannel.write(metadata.serialize());
             return metadata;
         } catch (IOException e) {
             throw new DataEntryWriteFailedException(e);
         }
     }
 
-    static class IndexChannelIterator implements Iterator<EntryMetadata> {
+    static class IndexChannelIterator implements Iterator<PersistentEntryMetadata> {
 
         private final ByteBuffer buffer;
 
@@ -185,8 +180,8 @@ class LogSegment {
         }
 
         @Override
-        public EntryMetadata next() {
-            return EntryMetadata.deserialize(buffer);
+        public PersistentEntryMetadata next() {
+            return PersistentEntryMetadata.deserialize(buffer);
         }
     }
 }

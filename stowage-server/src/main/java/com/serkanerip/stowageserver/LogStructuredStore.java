@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import com.serkanerip.stowagecommon.HeapData;
@@ -28,13 +29,19 @@ class LogStructuredStore {
 
     private LogSegment activeSegment;
 
+    private final ReentrantLock writeLock = new ReentrantLock(true);
+
     private Thread monitorThread;
+
+    private final LogSegmentCompacter compacter;
 
     public LogStructuredStore(ServerOptions options) {
         this.options = options;
+        this.compacter = new LogSegmentCompacter(this);
     }
 
     public void shutdown() {
+        compacter.shutdown();
         if (monitorThread != null) {
             monitorThread.interrupt();
         }
@@ -63,6 +70,10 @@ class LogStructuredStore {
         logger.info("Initialized KeyValueLogStore");
     }
 
+    ReentrantLock getWriteLock() {
+        return writeLock;
+    }
+
     public void delete(HeapData key) {
         put(key, TOMBSTONE_MARKER);
     }
@@ -76,20 +87,24 @@ class LogStructuredStore {
     }
 
     public void put(HeapData key, HeapData value) {
-        var dataEntry = new EntryRecord(key, value);
-        var metadata = activeSegment.write(dataEntry);
-        var inMemoryMetadata = InMemoryIndex.EntryMetadata.fromPersistentEntryMetadata(
-            activeSegment.getId(), metadata
-        );
-        inMemoryIndex.put(key, inMemoryMetadata);
-        afterPut();
+        writeLock.lock();
+        try {
+            var dataEntry = new EntryRecord(key, value);
+            var metadata = activeSegment.write(dataEntry);
+            var inMemoryMetadata = InMemoryIndex.MemoryEntryMetadata.fromPersistedEntryMetadata(
+                activeSegment.getId(), metadata
+            );
+            inMemoryIndex.put(key, inMemoryMetadata);
+            afterPut();
+        } finally {
+            writeLock.unlock();
+        }
     }
 
     private void afterPut() {
-        if (activeSegment.dataSize() >= LogSegment.SEGMENT_MAX_SIZE_IN_BYTES) {
+        if (activeSegment.getDataSize() >= LogSegment.SEGMENT_MAX_SIZE_IN_BYTES) {
             this.activeSegment = createEmptySegment();
         }
-        var segmentsToCompact = new ArrayList<String>();
         var segmentsToDecommission = new ArrayList<String>();
         for (Map.Entry<String, SegmentStats> statsEntry : getSegmentStats()
             .entrySet()) {
@@ -100,43 +115,20 @@ class LogStructuredStore {
                 if (statsEntry.getValue().obsoleteDataRatio() == 1.0) {
                     segmentsToDecommission.add(statsEntry.getKey());
                 } else {
-                    segmentsToCompact.add(statsEntry.getKey());
+                    compacter.offer(statsEntry.getKey());
                 }
 
             }
         }
         segmentsToDecommission.forEach(this::decommission);
-        segmentsToCompact.forEach(segmentId -> compactSegment(getSegment(segmentId)));
     }
 
-    private void compactSegment(LogSegment segment) {
-        var startTime = System.currentTimeMillis();
-        logger.info("Compacting segment {}", segment.getId());
-        var indexIterator = segment.newIndexIterator();
-        var segmentDch = segment.getDataChannel();
-        while (indexIterator.hasNext()) {
-            var metadata = indexIterator.next();
-            var keyHeapData = new HeapData(metadata.key());
-            var inMemoryMetadata = inMemoryIndex.get(keyHeapData);
-            var isMetadataFresh = inMemoryMetadata.segmentId().equals(segment.getId())
-                && inMemoryMetadata.valueOffset() == metadata.valueOffset();
-            if (isMetadataFresh) {
-                try {
-                    var newDataEntry = activeSegment.transferFrom(segmentDch, metadata);
-                    inMemoryIndex.put(
-                        keyHeapData,
-                        InMemoryIndex.EntryMetadata.fromPersistentEntryMetadata(
-                            activeSegment.getId(), newDataEntry
-                        )
-                    );
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }
-        }
-        decommission(segment.getId());
-        logger.info("Compacted segment {} in {} ms", segment.getId(),
-            System.currentTimeMillis() - startTime);
+    InMemoryIndex getInMemoryIndex() {
+        return inMemoryIndex;
+    }
+
+    LogSegment getActiveSegment() {
+        return activeSegment;
     }
 
     void decommission(String segmentId) {
@@ -153,7 +145,7 @@ class LogStructuredStore {
     private void deleteEmptySegments() {
         var emptySegmentIds = new ArrayList<String>();
         segments.forEach((id, segment) -> {
-            if (segment.dataSize() == 0L) {
+            if (segment.getDataSize() == 0L) {
                 emptySegmentIds.add(id);
             }
         });

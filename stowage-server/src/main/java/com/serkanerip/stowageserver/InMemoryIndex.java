@@ -11,35 +11,9 @@ import org.slf4j.LoggerFactory;
 
 class InMemoryIndex {
 
-    record EntryMetadata(String segmentId, int valueSize, long valueOffset) {
-        static EntryMetadata fromPersistentEntryMetadata(
-            String segmentId, com.serkanerip.stowageserver.EntryMetadata entryMetadata) {
-            return new EntryMetadata(segmentId, entryMetadata.valueSize(),
-                entryMetadata.valueOffset());
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            EntryMetadata that = (EntryMetadata) o;
-            return valueSize == that.valueSize && valueOffset == that.valueOffset
-                && Objects.equals(segmentId, that.segmentId);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(segmentId, valueSize, valueOffset);
-        }
-    }
-
     private static final Logger logger = LoggerFactory.getLogger(InMemoryIndex.class);
 
-    private final HashMap<HeapData, EntryMetadata> index = new HashMap<>();
+    private final HashMap<HeapData, MemoryEntryMetadata> index = new HashMap<>();
 
     private final Map<String, SegmentStats> segmentStats;
 
@@ -60,7 +34,7 @@ class InMemoryIndex {
                 var iterator = segment.newIndexIterator();
                 while (iterator.hasNext()) {
                     var persistentMetadata = iterator.next();
-                    instance.put(new HeapData(persistentMetadata.key()), new EntryMetadata(
+                    instance.put(new HeapData(persistentMetadata.key()), new MemoryEntryMetadata(
                         segmentId, persistentMetadata.valueSize(), persistentMetadata.valueOffset()
                     ));
                 }
@@ -73,21 +47,21 @@ class InMemoryIndex {
         return index.size();
     }
 
-    EntryMetadata get(HeapData key) {
+    MemoryEntryMetadata get(HeapData key) {
         return index.get(key);
     }
 
     /**
      * Returns previous metadata for this key if any
      */
-    void put(HeapData key, EntryMetadata metadata) {
+    void put(HeapData key, MemoryEntryMetadata metadata) {
         var previousMetadata = index.get(key);
         index.put(key, metadata);
         updateStats(key.size(), previousMetadata, metadata);
     }
 
-    void updateStats(int keySize, InMemoryIndex.EntryMetadata prevMetadata,
-                     InMemoryIndex.EntryMetadata newMetadata) {
+    void updateStats(int keySize, MemoryEntryMetadata prevMetadata,
+                     MemoryEntryMetadata newMetadata) {
         if (prevMetadata != null) {
             var id = prevMetadata.segmentId();
             segmentStats.compute(id, (segId, existingStats) -> {
@@ -107,6 +81,32 @@ class InMemoryIndex {
             stats.totalDataSize += newMetadata.valueSize() + keySize;
             return stats;
         });
+    }
+
+    record MemoryEntryMetadata(String segmentId, int valueSize, long valueOffset) {
+        static MemoryEntryMetadata fromPersistedEntryMetadata(
+            String segmentId, PersistentEntryMetadata persistentEntryMetadata) {
+            return new MemoryEntryMetadata(segmentId, persistentEntryMetadata.valueSize(),
+                persistentEntryMetadata.valueOffset());
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            MemoryEntryMetadata that = (MemoryEntryMetadata) o;
+            return valueSize == that.valueSize && valueOffset == that.valueOffset
+                && Objects.equals(segmentId, that.segmentId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(segmentId, valueSize, valueOffset);
+        }
     }
 
 }
