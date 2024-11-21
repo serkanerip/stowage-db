@@ -74,6 +74,7 @@ class LogSegmentCompacter {
             logger.warn("Segment is null");
             return;
         }
+        logger.info("Compacting segment {}", segment.getId());
         var startTime = System.currentTimeMillis();
         var indexIterator = segment.newIndexIterator();
         var segmentDch = segment.getDataChannel();

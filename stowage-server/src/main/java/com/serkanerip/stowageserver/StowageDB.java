@@ -27,7 +27,7 @@ public class StowageDB {
 
     static final byte[] TOMBSTONE_MARKER = new byte[] {};
 
-    private InMemoryIndex inMemoryIndex;
+    private final InMemoryIndex inMemoryIndex;
 
     private LogSegment activeSegment;
 
@@ -37,11 +37,14 @@ public class StowageDB {
 
     private final LogSegmentCompacter compacter;
 
-    private final AtomicLong nextSegmentId = new AtomicLong();
+    private final AtomicLong nextSegmentId = new AtomicLong(System.currentTimeMillis());
+
+    private final AtomicLong nextSequenceNumber = new AtomicLong(0L);
 
     public StowageDB(ServerOptions options) {
         this.options = options;
         this.compacter = new LogSegmentCompacter(this);
+        this.inMemoryIndex = new InMemoryIndex(segmentStats);
         start();
     }
 
@@ -59,7 +62,7 @@ public class StowageDB {
     private void start() {
         buildSegmentsFromFiles();
         deleteEmptySegments();
-        this.inMemoryIndex = InMemoryIndex.fromLogSegments(segments, segmentStats);
+        nextSequenceNumber.set(inMemoryIndex.rebuiltFromSegments(segments) + 1);
         this.activeSegment = createEmptySegment();
         this.monitorThread = Thread.ofVirtual().start(() -> {
             while (!Thread.currentThread().isInterrupted()) {
@@ -122,7 +125,6 @@ public class StowageDB {
             logger.warn("Segment {} not found", metadata.segmentId());
             return get(rawKey, attempt + 1);
         }
-        logger.info("reading from segment {}", metadata.segmentId());
         return segment.read(metadata);
     }
 
@@ -147,15 +149,12 @@ public class StowageDB {
             throw new IllegalArgumentException("Value cannot be null!");
         }
         writeLock.lock();
-        var key = new HeapData(rawKey);
-        var value = new HeapData(rawValue);
         try {
-            var dataEntry = new EntryRecord(key, value);
-            var metadata = activeSegment.write(dataEntry);
+            var metadata = activeSegment.write(rawKey, rawValue, nextSequenceNumber.incrementAndGet());
             var inMemoryMetadata = InMemoryIndex.MemoryEntryMetadata.fromPersistedEntryMetadata(
                 activeSegment.getId(), metadata
             );
-            inMemoryIndex.put(key, inMemoryMetadata);
+            inMemoryIndex.put(new HeapData(rawKey), inMemoryMetadata);
             afterPut();
         } finally {
             writeLock.unlock();
@@ -262,7 +261,9 @@ public class StowageDB {
                 .forEach(path -> {
                     var id = Utils.extractSegmentId(path);
                    segments.put(id, new LogSegment(path));
-                   nextSegmentId.set(id);
+                   if (id > nextSegmentId.get()) {
+                       nextSegmentId.set(id);
+                   }
                 });
         } catch (IOException e) {
             throw new UncheckedIOException(e);

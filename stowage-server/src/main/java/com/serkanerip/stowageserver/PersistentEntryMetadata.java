@@ -7,15 +7,23 @@ import java.util.Objects;
 record PersistentEntryMetadata(
     byte[] key,
     int valueSize,
-    long valueOffset
+    long valueOffset,
+    long sequenceNumber
 ) {
 
+    private static final int KEY_LENGTH_SIZE = Integer.BYTES; // For the length of the key
+    private static final int VALUE_OFFSET_SIZE = Long.BYTES;
+    private static final int VALUE_SIZE_SIZE = Integer.BYTES;
+    private static final int SEQUENCE_NUMBER_SIZE = Long.BYTES;
+
     public ByteBuffer serialize() {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES + key.length + Long.BYTES + Integer.BYTES);
+        int totalSize = KEY_LENGTH_SIZE + key.length + VALUE_OFFSET_SIZE + VALUE_SIZE_SIZE + SEQUENCE_NUMBER_SIZE;
+        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
         buffer.putInt(key.length);
         buffer.put(key);
         buffer.putLong(valueOffset);
         buffer.putInt(valueSize);
+        buffer.putLong(sequenceNumber);
         buffer.flip();
         return buffer;
     }
@@ -26,7 +34,8 @@ record PersistentEntryMetadata(
         buffer.get(key);
         long valueOffset = buffer.getLong();
         int valueSize = buffer.getInt();
-        return new PersistentEntryMetadata(key, valueSize, valueOffset);
+        long sequenceNumber = buffer.getLong();
+        return new PersistentEntryMetadata(key, valueSize, valueOffset, sequenceNumber);
     }
 
     @Override

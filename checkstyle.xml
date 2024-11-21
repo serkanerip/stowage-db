@@ -21,6 +21,8 @@
 
     <property name="severity" value="error"/>
 
+    <module name="SuppressWarningsFilter"/>
+
     <property name="fileExtensions" value="java, properties, xml"/>
     <!-- Excludes all 'module-info.java' files              -->
     <!-- See https://checkstyle.org/config_filefilters.html -->
@@ -47,6 +49,12 @@
     </module>
 
     <module name="TreeWalker">
+        <module name="SuppressWarnings">
+            <property name="id" value="checkstyle:suppresswarnings"/>
+        </module>
+
+        <module name="SuppressWithNearbyCommentFilter"/>
+        <module name="SuppressWarningsHolder"/>
         <module name="OuterTypeFilename"/>
         <module name="IllegalTokenText">
             <property name="tokens" value="STRING_LITERAL, CHAR_LITERAL"/>

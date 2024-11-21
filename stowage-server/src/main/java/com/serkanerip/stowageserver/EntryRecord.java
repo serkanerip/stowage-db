@@ -2,36 +2,34 @@ package com.serkanerip.stowageserver;
 
 import java.nio.ByteBuffer;
 
-import com.serkanerip.stowagecommon.HeapData;
-
 class EntryRecord {
 
-    private final HeapData key;
+    private final byte[] key;
 
-    private final HeapData value;
+    private final byte[] value;
 
-    public EntryRecord(HeapData key, HeapData value) {
+    public EntryRecord(byte[] key, byte[] value) {
         this.key = key;
         this.value = value;
     }
 
     public ByteBuffer serialize() {
-        var keySize = key.size();
-        var valueSize = value.size();
+        var keySize = key.length;
+        var valueSize = value.length;
         var buff = ByteBuffer.allocateDirect(4 + keySize + valueSize + 4);
         buff.putInt(keySize);
-        buff.put(key.toByteArray());
+        buff.put(key);
         buff.putInt(valueSize);
-        buff.put(value.toByteArray());
+        buff.put(value);
         buff.flip();
         return buff;
     }
 
-    public HeapData getKey() {
+    public byte[] getKey() {
         return key;
     }
 
-    public HeapData getValue() {
+    public byte[] getValue() {
         return value;
     }
 }

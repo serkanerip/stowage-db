@@ -166,6 +166,10 @@ class StowageDBTest {
             db.shutdown();
             db = new StowageDB(options);
 
+            for (int i = 0; i < 100; i++) {
+                assertArrayEquals((valuePrefix + i).getBytes(), db.get("key" + i));
+            }
+
             Map<String, SegmentStats> statsAfterRestart = db.getSegmentStats();
             long keyCountAfterRestart = statsAfterRestart.values().stream()
                 .mapToLong(stats -> stats.getTotalKeyCount() - stats.getObsoleteKeyCount())

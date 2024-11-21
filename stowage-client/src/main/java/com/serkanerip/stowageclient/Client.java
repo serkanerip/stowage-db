@@ -5,7 +5,6 @@ import java.util.concurrent.ExecutionException;
 import com.serkanerip.stowagecommon.DeleteRequest;
 import com.serkanerip.stowagecommon.GetRequest;
 import com.serkanerip.stowagecommon.GetResponse;
-import com.serkanerip.stowagecommon.HeapData;
 import com.serkanerip.stowagecommon.PutRequest;
 import com.serkanerip.stowagecommon.SimpleResponse;
 
@@ -23,7 +22,7 @@ public class Client {
     }
 
     public byte[] get(byte[] key) {
-        var request = new GetRequest(new HeapData(key));
+        var request = new GetRequest(key);
         var ongoingRequest = nettyClient.sendMessage(request);
         try {
             var responsePayload = ongoingRequest.getFuture().get();
@@ -38,7 +37,7 @@ public class Client {
     }
 
     public boolean delete(byte[] key) {
-        var request = new DeleteRequest(new HeapData(key));
+        var request = new DeleteRequest(key);
         var ongoingRequest = nettyClient.sendMessage(request);
         try {
             var responsePayload = ongoingRequest.getFuture().get();
@@ -53,7 +52,7 @@ public class Client {
     }
 
     public boolean put(byte[] key, byte[] value) {
-        var payload = new PutRequest(new HeapData(key), new HeapData(value));
+        var payload = new PutRequest(key, value);
         var request = nettyClient.sendMessage(payload);
         try {
             var responsePayload = request.getFuture().get();

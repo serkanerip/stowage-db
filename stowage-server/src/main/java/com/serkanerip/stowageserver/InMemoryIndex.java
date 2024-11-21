@@ -1,6 +1,5 @@
 package com.serkanerip.stowageserver;
 
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -17,30 +16,28 @@ class InMemoryIndex {
 
     private final Map<Long, SegmentStats> segmentStats;
 
-    private InMemoryIndex(Map<Long, SegmentStats> segmentStats) {
+    public InMemoryIndex(Map<Long, SegmentStats> segmentStats) {
         this.segmentStats = segmentStats;
     }
 
-    static InMemoryIndex fromLogSegments(
-        Map<Long, LogSegment> segments,
-        Map<Long, SegmentStats> segmentStats
-    ) {
+    public long rebuiltFromSegments(Map<Long, LogSegment> segments) {
+        var maxSequenceNumber = 0L;
         var startTime = System.currentTimeMillis();
-        var instance = new InMemoryIndex(segmentStats);
-        segments.keySet().stream().sorted(Comparator.naturalOrder())
-            .forEach(segmentId -> {
-                logger.info("Building memory index from segment {}", segmentId);
-                var segment = segments.get(segmentId);
-                var iterator = segment.newIndexIterator();
-                while (iterator.hasNext()) {
-                    var persistentMetadata = iterator.next();
-                    instance.put(new HeapData(persistentMetadata.key()), new MemoryEntryMetadata(
-                        segmentId, persistentMetadata.valueSize(), persistentMetadata.valueOffset()
-                    ));
-                }
-            });
-        logger.info("InMemoryIndex build took {} ms", System.currentTimeMillis() - startTime);
-        return instance;
+        for (LogSegment segment : segments.values()) {
+            var segmentId = segment.getId();
+            logger.info("Building memory index from segment {}", segmentId);
+            var iterator = segment.newIndexIterator();
+            while (iterator.hasNext()) {
+                var persistentMetadata = iterator.next();
+                var memoryMetadata = MemoryEntryMetadata.fromPersistedEntryMetadata(
+                    segmentId, persistentMetadata
+                );
+                maxSequenceNumber = Math.max(maxSequenceNumber, persistentMetadata.sequenceNumber());
+                put(new HeapData(persistentMetadata.key()), memoryMetadata);
+            }
+        }
+        logger.info("InMemoryIndex rebuilt took {} ms", System.currentTimeMillis() - startTime);
+        return maxSequenceNumber;
     }
 
     int size() {
@@ -51,62 +48,78 @@ class InMemoryIndex {
         return index.get(key);
     }
 
-    /**
-     * Returns previous metadata for this key if any
-     */
     void put(HeapData key, MemoryEntryMetadata metadata) {
         var previousMetadata = index.get(key);
-        index.put(key, metadata);
+        var isFresh = previousMetadata == null || previousMetadata.sequenceNumber <= metadata.sequenceNumber;
+        if (isFresh) {
+            index.put(key, metadata);
+        }
         updateStats(key.size(), previousMetadata, metadata);
     }
 
-    void updateStats(int keySize, MemoryEntryMetadata prevMetadata,
-                     MemoryEntryMetadata newMetadata) {
-        if (prevMetadata != null) {
-            var id = prevMetadata.segmentId();
-            segmentStats.compute(id, (segId, existingStats) -> {
-                if (existingStats == null) {
-                    existingStats = new SegmentStats();
-                }
-                existingStats.obsoleteKeyCount++;
-                existingStats.obsoleteDataSize += prevMetadata.valueSize() + keySize;
-                return existingStats;
-            });
-        }
-        segmentStats.compute(newMetadata.segmentId(), (seg, stats) -> {
+    private void incrementObsoleteData(MemoryEntryMetadata metadata, int keySize) {
+        segmentStats.compute(metadata.segmentId(), (id, stats) -> {
             if (stats == null) {
                 stats = new SegmentStats();
             }
-            stats.totalKeyCount++;
-            stats.totalDataSize += newMetadata.valueSize() + keySize;
+            stats.obsoleteKeyCount++;
+            stats.obsoleteDataSize += metadata.valueSize() + keySize;
             return stats;
         });
     }
 
-    record MemoryEntryMetadata(Long segmentId, int valueSize, long valueOffset) {
+    private void incrementNewData(MemoryEntryMetadata metadata, int keySize) {
+        segmentStats.compute(metadata.segmentId(), (id, stats) -> {
+            if (stats == null) {
+                stats = new SegmentStats();
+            }
+            stats.totalKeyCount++;
+            stats.totalDataSize += metadata.valueSize() + keySize;
+            return stats;
+        });
+    }
+
+    void updateStats(int keySize, MemoryEntryMetadata prevMetadata, MemoryEntryMetadata newMetadata) {
+        boolean isPrevObsolete = prevMetadata != null && newMetadata.sequenceNumber >= prevMetadata.sequenceNumber;
+        boolean isNewObsolete = prevMetadata != null && prevMetadata.sequenceNumber > newMetadata.sequenceNumber;
+
+        if (isPrevObsolete) {
+            incrementObsoleteData(prevMetadata, keySize);
+        }
+        if (isNewObsolete) {
+            incrementObsoleteData(newMetadata, keySize);
+        }
+        if (prevMetadata == null || newMetadata.sequenceNumber >= prevMetadata.sequenceNumber) {
+            incrementNewData(newMetadata, keySize);
+        }
+    }
+
+    record MemoryEntryMetadata(Long segmentId, int valueSize, long valueOffset, long sequenceNumber) {
         static MemoryEntryMetadata fromPersistedEntryMetadata(
             Long segmentId, PersistentEntryMetadata persistentEntryMetadata
         ) {
-            return new MemoryEntryMetadata(segmentId, persistentEntryMetadata.valueSize(),
-                persistentEntryMetadata.valueOffset());
+            return new MemoryEntryMetadata(
+                segmentId,
+                persistentEntryMetadata.valueSize(),
+                persistentEntryMetadata.valueOffset(),
+                persistentEntryMetadata.sequenceNumber()
+            );
         }
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
             if (o == null || getClass() != o.getClass()) {
                 return false;
             }
             MemoryEntryMetadata that = (MemoryEntryMetadata) o;
             return valueSize == that.valueSize && valueOffset == that.valueOffset
+                && sequenceNumber == that.sequenceNumber
                 && Objects.equals(segmentId, that.segmentId);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(segmentId, valueSize, valueOffset);
+            return Objects.hash(segmentId, valueSize, valueOffset, sequenceNumber);
         }
     }
 

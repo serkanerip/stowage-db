@@ -56,7 +56,7 @@ class LogSegment {
         var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
         dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
         var newMetadata = new PersistentEntryMetadata(
-            metadata.key(), metadata.valueSize(), newValOffset
+            metadata.key(), metadata.valueSize(), newValOffset, metadata.sequenceNumber()
         );
         indexChannel.write(newMetadata.serialize());
         return newMetadata;
@@ -147,12 +147,13 @@ class LogSegment {
         }
     }
 
-    public PersistentEntryMetadata write(EntryRecord entryRecord) {
+    public PersistentEntryMetadata write(byte[] rawKey, byte[] rawValue, long sequenceNumber) {
         try {
-            var valueOffset = dataSize + Integer.BYTES + entryRecord.getKey().size() + Integer.BYTES;
+            var entryRecord = new EntryRecord(rawKey, rawValue);
+            var valueOffset = dataSize + Integer.BYTES + entryRecord.getKey().length + Integer.BYTES;
             dataSize += fileChannel.write(entryRecord.serialize());
             var metadata = new PersistentEntryMetadata(
-                entryRecord.getKey().toByteArray(), entryRecord.getValue().size(), valueOffset
+                entryRecord.getKey(), entryRecord.getValue().length, valueOffset, sequenceNumber
             );
             indexChannel.write(metadata.serialize());
             return metadata;
