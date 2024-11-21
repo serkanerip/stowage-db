@@ -72,7 +72,7 @@ class StowageDBTest {
         @Test
         void shouldCreateNewSegmentWhenSizeLimitReached() {
             String valuePrefix = "test-value-with-sufficient-length-to-fill-segments-";
-            Map<String, SegmentStats> initialStats = db.getSegmentStats();
+            Map<Long, SegmentStats> initialStats = db.getSegmentStats();
             long initialTotalDataSize = initialStats.values().stream()
                 .mapToLong(SegmentStats::getTotalDataSize)
                 .sum();
@@ -83,7 +83,7 @@ class StowageDBTest {
                 db.put("key" + i, value.getBytes());
             }
 
-            Map<String, SegmentStats> currentStats = db.getSegmentStats();
+            Map<Long, SegmentStats> currentStats = db.getSegmentStats();
             long currentTotalDataSize = currentStats.values().stream()
                 .mapToLong(SegmentStats::getTotalDataSize)
                 .sum();
@@ -119,7 +119,7 @@ class StowageDBTest {
                 db.put("key" + i, value.getBytes());
             }
 
-            Map<String, SegmentStats> currentStats = db.getSegmentStats();
+            Map<Long, SegmentStats> currentStats = db.getSegmentStats();
 
             // Verify data integrity
             for (int i = 0; i < 150; i++) {
@@ -157,7 +157,7 @@ class StowageDBTest {
                 db.put("key" + i, (valuePrefix + i).getBytes());
             }
 
-            Map<String, SegmentStats> statsBeforeRestart = db.getSegmentStats();
+            Map<Long, SegmentStats> statsBeforeRestart = db.getSegmentStats();
             long keyCountBeforeRestart = statsBeforeRestart.values().stream()
                 .mapToLong(stats -> stats.getTotalKeyCount() - stats.getObsoleteKeyCount())
                 .sum();
@@ -170,7 +170,7 @@ class StowageDBTest {
                 assertArrayEquals((valuePrefix + i).getBytes(), db.get("key" + i));
             }
 
-            Map<String, SegmentStats> statsAfterRestart = db.getSegmentStats();
+            Map<Long, SegmentStats> statsAfterRestart = db.getSegmentStats();
             long keyCountAfterRestart = statsAfterRestart.values().stream()
                 .mapToLong(stats -> stats.getTotalKeyCount() - stats.getObsoleteKeyCount())
                 .sum();

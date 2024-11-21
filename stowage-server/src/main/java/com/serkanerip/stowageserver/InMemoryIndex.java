@@ -3,6 +3,7 @@ package com.serkanerip.stowageserver;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.serkanerip.stowagecommon.HeapData;
 import org.slf4j.Logger;
@@ -16,28 +17,35 @@ class InMemoryIndex {
 
     private final Map<Long, SegmentStats> segmentStats;
 
+    private final ReentrantLock lock = new ReentrantLock();
+
     public InMemoryIndex(Map<Long, SegmentStats> segmentStats) {
         this.segmentStats = segmentStats;
     }
 
     public long rebuiltFromSegments(Map<Long, LogSegment> segments) {
-        var maxSequenceNumber = 0L;
-        var startTime = System.currentTimeMillis();
-        for (LogSegment segment : segments.values()) {
-            var segmentId = segment.getId();
-            logger.info("Building memory index from segment {}", segmentId);
-            var iterator = segment.newIndexIterator();
-            while (iterator.hasNext()) {
-                var persistentMetadata = iterator.next();
-                var memoryMetadata = MemoryEntryMetadata.fromPersistedEntryMetadata(
-                    segmentId, persistentMetadata
-                );
-                maxSequenceNumber = Math.max(maxSequenceNumber, persistentMetadata.sequenceNumber());
-                put(new HeapData(persistentMetadata.key()), memoryMetadata);
+        lock.lock();
+        try {
+            var maxSequenceNumber = 0L;
+            var startTime = System.currentTimeMillis();
+            for (LogSegment segment : segments.values()) {
+                var segmentId = segment.getId();
+                logger.info("Building memory index from segment {}", segmentId);
+                var iterator = segment.newIndexIterator();
+                while (iterator.hasNext()) {
+                    var persistentMetadata = iterator.next();
+                    var memoryMetadata = MemoryEntryMetadata.fromPersistedEntryMetadata(
+                        segmentId, persistentMetadata
+                    );
+                    maxSequenceNumber = Math.max(maxSequenceNumber, persistentMetadata.sequenceNumber());
+                    put(new HeapData(persistentMetadata.key()), memoryMetadata);
+                }
             }
+            logger.info("InMemoryIndex rebuilt took {} ms", System.currentTimeMillis() - startTime);
+            return maxSequenceNumber;
+        } finally {
+            lock.unlock();
         }
-        logger.info("InMemoryIndex rebuilt took {} ms", System.currentTimeMillis() - startTime);
-        return maxSequenceNumber;
     }
 
     int size() {
@@ -48,7 +56,25 @@ class InMemoryIndex {
         return index.get(key);
     }
 
+    void putAll(Map<HeapData, MemoryEntryMetadata> map) {
+        lock.lock();
+        try {
+            map.forEach(this::put);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     void put(HeapData key, MemoryEntryMetadata metadata) {
+        lock.lock();
+        try {
+            putInternal(key, metadata);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void putInternal(HeapData key, MemoryEntryMetadata metadata) {
         var previousMetadata = index.get(key);
         var isFresh = previousMetadata == null || previousMetadata.sequenceNumber <= metadata.sequenceNumber;
         if (isFresh) {
@@ -94,9 +120,9 @@ class InMemoryIndex {
         }
     }
 
-    record MemoryEntryMetadata(Long segmentId, int valueSize, long valueOffset, long sequenceNumber) {
+    record MemoryEntryMetadata(long segmentId, int valueSize, long valueOffset, long sequenceNumber) {
         static MemoryEntryMetadata fromPersistedEntryMetadata(
-            Long segmentId, PersistentEntryMetadata persistentEntryMetadata
+            long segmentId, PersistentEntryMetadata persistentEntryMetadata
         ) {
             return new MemoryEntryMetadata(
                 segmentId,

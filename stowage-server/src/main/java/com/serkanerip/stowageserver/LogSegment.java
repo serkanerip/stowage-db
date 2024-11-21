@@ -51,8 +51,10 @@ class LogSegment {
     PersistentEntryMetadata transferFrom(
         FileChannel sourceChannel, PersistentEntryMetadata metadata
     ) throws IOException {
-        var readPos = metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
-        var readCount = Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
+        var readPos =
+            metadata.valueOffset() - Integer.BYTES - metadata.key().length - Integer.BYTES;
+        var readCount =
+            Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
         var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
         dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
         var newMetadata = new PersistentEntryMetadata(
@@ -60,6 +62,7 @@ class LogSegment {
         );
         indexChannel.write(newMetadata.serialize());
         return newMetadata;
+
     }
 
     public void decommission() {
@@ -84,7 +87,7 @@ class LogSegment {
         }
     }
 
-    public Long getId() {
+    public long getId() {
         return segmentId;
     }
 
@@ -150,7 +153,8 @@ class LogSegment {
     public PersistentEntryMetadata write(byte[] rawKey, byte[] rawValue, long sequenceNumber) {
         try {
             var entryRecord = new EntryRecord(rawKey, rawValue);
-            var valueOffset = dataSize + Integer.BYTES + entryRecord.getKey().length + Integer.BYTES;
+            var valueOffset =
+                dataSize + Integer.BYTES + entryRecord.getKey().length + Integer.BYTES;
             dataSize += fileChannel.write(entryRecord.serialize());
             var metadata = new PersistentEntryMetadata(
                 entryRecord.getKey(), entryRecord.getValue().length, valueOffset, sequenceNumber
@@ -168,7 +172,8 @@ class LogSegment {
 
         private IndexChannelIterator(FileChannel indexChannel) {
             try {
-                this.buffer = indexChannel.map(FileChannel.MapMode.READ_ONLY, 0L, indexChannel.size());
+                this.buffer =
+                    indexChannel.map(FileChannel.MapMode.READ_ONLY, 0L, indexChannel.size());
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }

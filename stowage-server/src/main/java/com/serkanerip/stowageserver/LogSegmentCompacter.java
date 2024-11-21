@@ -26,10 +26,9 @@ class LogSegmentCompacter {
     }
 
     void offer(Long segmentId) {
-        logger.info("Offering segment {}", segmentId);
-        if (!queue.contains(segmentId) && !queue.offer(segmentId)) {
-                logger.warn("Could not add segment {} to queue", segmentId);
-            }
+        if (!queue.offer(segmentId)) {
+            logger.warn("Queue is full, ignoring segment: {}", segmentId);
+        }
     }
 
     void shutdown() {
@@ -50,7 +49,7 @@ class LogSegmentCompacter {
                 if (segmentId.equals(STOP_FLAG)) {
                     continue;
                 }
-                compactWithLock(segmentId);
+                compactSegment(store.getSegment(segmentId));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.warn("Interrupted while compacting segment", e);
@@ -59,19 +58,8 @@ class LogSegmentCompacter {
         }
     }
 
-    private void compactWithLock(Long segmentId) {
-        var lock = store.getWriteLock();
-        lock.lock();
-        try {
-            compactSegment(store.getSegment(segmentId));
-        } finally {
-            lock.unlock();
-        }
-    }
-
     private void compactSegment(LogSegment segment) {
         if (segment == null) {
-            logger.warn("Segment is null");
             return;
         }
         logger.info("Compacting segment {}", segment.getId());
@@ -79,22 +67,19 @@ class LogSegmentCompacter {
         var indexIterator = segment.newIndexIterator();
         var segmentDch = segment.getDataChannel();
         var inMemoryIndex = store.getInMemoryIndex();
-        var activeSegment = store.getActiveSegment();
+        var newSegment = store.createEmptySegment();
         while (indexIterator.hasNext()) {
             var metadata = indexIterator.next();
             var keyHeapData = new HeapData(metadata.key());
             var inMemoryMetadata = inMemoryIndex.get(keyHeapData);
-            var isMetadataFresh = inMemoryMetadata.segmentId().equals(segment.getId())
+            var isMetadataFresh = segment.getId() == inMemoryMetadata.segmentId()
                 && inMemoryMetadata.valueOffset() == metadata.valueOffset();
             if (isMetadataFresh) {
                 try {
-                    var newDataEntry = activeSegment.transferFrom(segmentDch, metadata);
-                    inMemoryIndex.put(
-                        keyHeapData,
-                        InMemoryIndex.MemoryEntryMetadata.fromPersistedEntryMetadata(
-                            activeSegment.getId(), newDataEntry
-                        )
-                    );
+                    var newDataEntry = newSegment.transferFrom(segmentDch, metadata);
+                    inMemoryIndex.put(keyHeapData, InMemoryIndex.MemoryEntryMetadata.fromPersistedEntryMetadata(
+                        newSegment.getId(), newDataEntry
+                    ));
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }

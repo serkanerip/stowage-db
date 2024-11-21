@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -17,13 +18,13 @@ import org.slf4j.LoggerFactory;
 @SuppressWarnings("checkstyle:AbbreviationAsWordInName")
 public class StowageDB {
 
-    private final Map<Long, LogSegment> segments = new HashMap<>();
+    private final Map<Long, SegmentStats> segmentStats = new ConcurrentHashMap<>();
 
-    private final ServerOptions options;
-
-    private final HashMap<Long, SegmentStats> segmentStats = new HashMap<>();
+    private final Map<Long, LogSegment> segments = new ConcurrentHashMap<>();
 
     private static final Logger logger = LoggerFactory.getLogger(StowageDB.class);
+
+    private final ServerOptions options;
 
     static final byte[] TOMBSTONE_MARKER = new byte[] {};
 
@@ -195,7 +196,7 @@ public class StowageDB {
         }
         var segmentsToDecommission = new ArrayList<Long>();
         for (Map.Entry<Long, SegmentStats> statsEntry : segmentStats.entrySet()) {
-            if (activeSegment.getId().equals(statsEntry.getKey())) {
+            if (activeSegment.getId() == statsEntry.getKey()) {
                 continue;
             }
             if (statsEntry.getValue().obsoleteDataRatio() >= options.compactionThreshold()) {
@@ -216,10 +217,6 @@ public class StowageDB {
         return inMemoryIndex;
     }
 
-    LogSegment getActiveSegment() {
-        return activeSegment;
-    }
-
     void decommission(Long segmentId) {
         var segment = segments.remove(segmentId);
         if (segment == null) {
@@ -230,9 +227,9 @@ public class StowageDB {
         segmentStats.remove(segment.getId());
     }
 
-    public Map<String, SegmentStats> getSegmentStats() {
+    Map<Long, SegmentStats> getSegmentStats() {
         // Return a defensive copy of the segmentStats map
-        return (Map<String, SegmentStats>) segmentStats.clone();
+        return new HashMap<>(segmentStats);
     }
 
     private void deleteEmptySegments() {
@@ -268,10 +265,6 @@ public class StowageDB {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    Map<Long, LogSegment> getSegments() {
-        return segments;
     }
 
     LogSegment getSegment(Long segmentId) {
