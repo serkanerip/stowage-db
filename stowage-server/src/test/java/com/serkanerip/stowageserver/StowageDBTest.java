@@ -9,16 +9,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class StowageDBTest {
     private StowageDB db;
+
     private ServerOptions options;
+
     @TempDir
     Path tempDir;
 
     @BeforeEach
     void setUp() {
         // Using smaller segment size to make testing easier
-        options = new ServerOptions(
-            "no_host", 1, tempDir, 0.7, 512
-        ); // 512B segment size, 70% compaction threshold
+        options = ServerOptions.builder()
+            .compactionThreshold(0.7)
+            .maxFileSize(512L)
+            .flushDataSize(64L)
+            .dataRootPath(tempDir)
+            .build(); // 512B segment size, 70% compaction threshold
         db = new StowageDB(options);
     }
 
@@ -62,7 +67,6 @@ class StowageDBTest {
             byte[] value = "test-value".getBytes();
             db.put(KEY_1, value);
             db.delete(KEY_1);
-            System.out.println(db.get(KEY_1));
             assertNull(db.get(KEY_1));
         }
     }

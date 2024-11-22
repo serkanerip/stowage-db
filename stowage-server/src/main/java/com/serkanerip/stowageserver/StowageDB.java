@@ -18,29 +18,29 @@ import org.slf4j.LoggerFactory;
 @SuppressWarnings("checkstyle:AbbreviationAsWordInName")
 public class StowageDB {
 
+    private static final Logger logger = LoggerFactory.getLogger(StowageDB.class);
+
+    private static final byte[] TOMBSTONE_MARKER = new byte[] {};
+
     private final Map<Long, SegmentStats> segmentStats = new ConcurrentHashMap<>();
 
     private final Map<Long, LogSegment> segments = new ConcurrentHashMap<>();
 
-    private static final Logger logger = LoggerFactory.getLogger(StowageDB.class);
-
     private final ServerOptions options;
-
-    static final byte[] TOMBSTONE_MARKER = new byte[] {};
 
     private final InMemoryIndex inMemoryIndex;
 
-    private LogSegment activeSegment;
-
     private final ReentrantLock writeLock = new ReentrantLock(true);
-
-    private Thread monitorThread;
 
     private final LogSegmentCompacter compacter;
 
     private final AtomicLong nextSegmentId = new AtomicLong(System.currentTimeMillis());
 
     private final AtomicLong nextSequenceNumber = new AtomicLong(0L);
+
+    private LogSegment activeSegment;
+
+    private Thread monitorThread;
 
     public StowageDB(ServerOptions options) {
         this.options = options;
@@ -64,7 +64,7 @@ public class StowageDB {
         buildSegmentsFromFiles();
         deleteEmptySegments();
         nextSequenceNumber.set(inMemoryIndex.rebuiltFromSegments(segments) + 1);
-        this.activeSegment = createEmptySegment();
+        this.activeSegment = createEmptySegment(LogSegment.State.ACTIVE);
         this.monitorThread = Thread.ofVirtual().start(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
@@ -186,24 +186,29 @@ public class StowageDB {
         put(key.getBytes(StandardCharsets.UTF_8), TOMBSTONE_MARKER);
     }
 
-    ReentrantLock getWriteLock() {
-        return writeLock;
-    }
-
     private void afterPut() {
         if (activeSegment.getDataSize() >= options.maxFileSize()) {
-            this.activeSegment = createEmptySegment();
+            this.activeSegment.setState(LogSegment.State.READ_ONLY);
+            this.activeSegment = createEmptySegment(LogSegment.State.ACTIVE);
         }
         var segmentsToDecommission = new ArrayList<Long>();
         for (Map.Entry<Long, SegmentStats> statsEntry : segmentStats.entrySet()) {
-            if (activeSegment.getId() == statsEntry.getKey()) {
+            var id = statsEntry.getKey();
+            var segment = getSegment(id);
+            if (segment == null || LogSegment.State.READ_ONLY != segment.getState()) {
                 continue;
             }
-            if (statsEntry.getValue().obsoleteDataRatio() >= options.compactionThreshold()) {
-                if (statsEntry.getValue().obsoleteDataRatio() == 1.0) {
-                    segmentsToDecommission.add(statsEntry.getKey());
+            var obsoleteDataRatio = statsEntry.getValue().obsoleteDataRatio();
+            if (obsoleteDataRatio >= options.compactionThreshold()) {
+                if (obsoleteDataRatio == 1.0) {
+                    segment.setState(LogSegment.State.STALE);
+                    segmentsToDecommission.add(id);
                 } else {
-                    compacter.offer(statsEntry.getKey());
+                    if (compacter.offer(statsEntry.getKey())) {
+                        segment.setState(LogSegment.State.COMPACTING);
+                    } else {
+                        logger.warn("Failed to offer segment {} for compaction!", id);
+                    }
                 }
             }
         }
@@ -219,12 +224,12 @@ public class StowageDB {
 
     void decommission(Long segmentId) {
         var segment = segments.remove(segmentId);
+        segmentStats.remove(segmentId);
         if (segment == null) {
             logger.warn("Segment {} cannot be decommissioned because it is not found!", segmentId);
             return;
         }
         segment.decommission();
-        segmentStats.remove(segment.getId());
     }
 
     Map<Long, SegmentStats> getSegmentStats() {
@@ -257,7 +262,9 @@ public class StowageDB {
                 .filter(path -> path.getFileName().toString().endsWith(".data"))
                 .forEach(path -> {
                     var id = Utils.extractSegmentId(path);
-                   segments.put(id, new LogSegment(path));
+                   segments.put(id, new LogSegment(
+                       path, LogSegment.State.READ_ONLY, options.flushDataSize()
+                   ));
                    if (id > nextSegmentId.get()) {
                        nextSegmentId.set(id);
                    }
@@ -271,11 +278,11 @@ public class StowageDB {
         return segments.get(segmentId);
     }
 
-    LogSegment createEmptySegment() {
+    LogSegment createEmptySegment(LogSegment.State state) {
         var id = nextSegmentId.incrementAndGet();
         var path = options.dataRootPath().resolve("%s.data".formatted(id));
         logger.info("Created new segment {}", id);
-        var segment = new LogSegment(path);
+        var segment = new LogSegment(path, state, options.flushDataSize());
         segments.put(id, segment);
         segmentStats.put(id, new SegmentStats());
         return segment;

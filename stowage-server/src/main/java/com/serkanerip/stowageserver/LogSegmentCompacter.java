@@ -25,10 +25,8 @@ class LogSegmentCompacter {
             .start((this::processQueue));
     }
 
-    void offer(Long segmentId) {
-        if (!queue.offer(segmentId)) {
-            logger.warn("Queue is full, ignoring segment: {}", segmentId);
-        }
+    boolean offer(Long segmentId) {
+        return queue.offer(segmentId);
     }
 
     void shutdown() {
@@ -67,7 +65,7 @@ class LogSegmentCompacter {
         var indexIterator = segment.newIndexIterator();
         var segmentDch = segment.getDataChannel();
         var inMemoryIndex = store.getInMemoryIndex();
-        var newSegment = store.createEmptySegment();
+        var newSegment = store.createEmptySegment(LogSegment.State.READ_ONLY);
         while (indexIterator.hasNext()) {
             var metadata = indexIterator.next();
             var keyHeapData = new HeapData(metadata.key());

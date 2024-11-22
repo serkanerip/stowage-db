@@ -17,6 +17,13 @@ import org.slf4j.LoggerFactory;
 
 class LogSegment {
 
+    enum State {
+        ACTIVE,      // Segment receiving writes
+        READ_ONLY,   // Segment used only for reads
+        COMPACTING,  // Segment in compaction queue or being processed
+        STALE        // Completely obsolete, ready for decommissioning
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(LogSegment.class);
 
     private final FileChannel fileChannel;
@@ -31,10 +38,18 @@ class LogSegment {
 
     private long dataSize;
 
-    public LogSegment(Path dataPath) {
+    private State state;
+
+    private long unFlushedSize = 0L;
+
+    private final long flushThreshold;
+
+    LogSegment(Path dataPath, State state, long flushThreshold) {
+        this.flushThreshold = flushThreshold;
+        this.state = state;
+        this.dataPath = dataPath;
+        this.segmentId = Utils.extractSegmentId(dataPath);
         try {
-            this.dataPath = dataPath;
-            this.segmentId = Utils.extractSegmentId(dataPath);
             this.indexPath = dataPath.getParent().resolve("%s.index".formatted(segmentId));
             this.fileChannel = FileChannel.open(dataPath,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
@@ -48,6 +63,24 @@ class LogSegment {
         }
     }
 
+    void flushToDisk() throws IOException {
+        if (unFlushedSize == 0) {
+            return;
+        }
+        logger.debug("Flushing segment {} to disk", segmentId);
+        fileChannel.force(true);
+        indexChannel.force(true);
+        unFlushedSize = 0L;
+    }
+
+    void setState(State state) {
+        this.state = state;
+    }
+
+    State getState() {
+        return state;
+    }
+
     PersistentEntryMetadata transferFrom(
         FileChannel sourceChannel, PersistentEntryMetadata metadata
     ) throws IOException {
@@ -56,16 +89,19 @@ class LogSegment {
         var readCount =
             Integer.BYTES + metadata.key().length + Integer.BYTES + metadata.valueSize();
         var newValOffset = dataSize + Integer.BYTES + metadata.key().length + Integer.BYTES;
+        unFlushedSize += readCount;
         dataSize += sourceChannel.transferTo(readPos, readCount, fileChannel);
         var newMetadata = new PersistentEntryMetadata(
             metadata.key(), metadata.valueSize(), newValOffset, metadata.sequenceNumber()
         );
         indexChannel.write(newMetadata.serialize());
+        if (unFlushedSize >= flushThreshold) {
+            flushToDisk();
+        }
         return newMetadata;
-
     }
 
-    public void decommission() {
+    void decommission() {
         try {
             shutdown();
             Files.delete(dataPath);
@@ -75,7 +111,7 @@ class LogSegment {
         }
     }
 
-    public void shutdown() {
+    void shutdown() {
         logger.info("Shutting down DataSegment");
         try {
             indexChannel.force(true);
@@ -87,11 +123,11 @@ class LogSegment {
         }
     }
 
-    public long getId() {
+    long getId() {
         return segmentId;
     }
 
-    public FileChannel getDataChannel() {
+    FileChannel getDataChannel() {
         return fileChannel;
     }
 
@@ -99,11 +135,11 @@ class LogSegment {
         return dataSize;
     }
 
-    public IndexChannelIterator newIndexIterator() {
+    IndexChannelIterator newIndexIterator() {
         return new IndexChannelIterator(indexChannel);
     }
 
-    public byte[] read(InMemoryIndex.MemoryEntryMetadata memoryEntryMetadata) {
+    byte[] read(InMemoryIndex.MemoryEntryMetadata memoryEntryMetadata) {
         var valSize = memoryEntryMetadata.valueSize();
         var valueOffset = memoryEntryMetadata.valueOffset();
 
@@ -150,16 +186,21 @@ class LogSegment {
         }
     }
 
-    public PersistentEntryMetadata write(byte[] rawKey, byte[] rawValue, long sequenceNumber) {
+    PersistentEntryMetadata write(byte[] rawKey, byte[] rawValue, long sequenceNumber) {
         try {
             var entryRecord = new EntryRecord(rawKey, rawValue);
             var valueOffset =
                 dataSize + Integer.BYTES + entryRecord.getKey().length + Integer.BYTES;
-            dataSize += fileChannel.write(entryRecord.serialize());
+            var buffer = entryRecord.serialize();
+            unFlushedSize += buffer.remaining();
+            dataSize += fileChannel.write(buffer);
             var metadata = new PersistentEntryMetadata(
                 entryRecord.getKey(), entryRecord.getValue().length, valueOffset, sequenceNumber
             );
             indexChannel.write(metadata.serialize());
+            if (unFlushedSize >= flushThreshold) {
+                flushToDisk();
+            }
             return metadata;
         } catch (IOException e) {
             throw new DataEntryWriteFailedException(e);
