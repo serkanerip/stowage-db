@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -43,7 +44,7 @@ public class StowageDB {
     private Thread monitorThread;
 
     public StowageDB(ServerOptions options) {
-        this.options = options;
+        this.options = Objects.requireNonNull(options);
         this.compacter = new LogSegmentCompacter(this);
         this.inMemoryIndex = new InMemoryIndex(segmentStats);
         start();
@@ -76,6 +77,7 @@ public class StowageDB {
                 }
                 var totalNumberOfEntries = inMemoryIndex.size();
                 logger.info("Total number of entries: {}", totalNumberOfEntries);
+                // logger.info("Total number of entries: {}", segmentStats.size());
                 segmentStats.forEach((id, stats) -> logger.info("Segment {} stats {}", id, stats));
             }
         });

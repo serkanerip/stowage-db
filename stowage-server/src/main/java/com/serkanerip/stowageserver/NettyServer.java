@@ -33,7 +33,12 @@ class NettyServer {
 
     void start(String inetHost, int port) {
         bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors());
+        workerGroup = new NioEventLoopGroup(
+            Runtime.getRuntime().availableProcessors()
+        );
+        logger.info("Starting the Netty server with {} loops for bossGroup and {} loops for workerGroup",
+            bossGroup.executorCount(), workerGroup.executorCount()
+        );
         try {
             ServerBootstrap b = new ServerBootstrap();
             b.group(bossGroup, workerGroup)

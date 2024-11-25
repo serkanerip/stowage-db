@@ -31,6 +31,8 @@ public class GetResponse implements MessagePayload {
 
     @Override
     public ByteBuf encode() {
+        // TODO Does specifying capacity and size makes any difference?
+        // var size = Integer.BYTES + (value == null ? 0 : value.length);
         var buffer = Unpooled.buffer();
         if (value == null) {
             buffer.writeInt(0);

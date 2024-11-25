@@ -57,6 +57,7 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
                 sendResponse(ctx.channel(), new TransportMessage(
                     TransportMessageType.SIMPLE_RESPONSE,
                     message.getCorrelationId(),
+                    // TODO use a static instance of this response instead of creating new on each response
                     new SimpleResponse(true, ErrorCode.NO_ERR).encode()
                 ));
             }
@@ -75,6 +76,7 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
                 sendResponse(ctx.channel(), new TransportMessage(
                     TransportMessageType.SIMPLE_RESPONSE,
                     message.getCorrelationId(),
+                    // TODO use a static instance of this response instead of creating new on each response
                     new SimpleResponse(true, ErrorCode.NO_ERR).encode()
                 ));
             }

@@ -34,7 +34,9 @@ public class SimpleResponse implements MessagePayload {
 
     @Override
     public ByteBuf encode() {
-        var buffer = Unpooled.buffer();
+        var buffer = Unpooled.buffer(
+            1 + Short.BYTES, 1 + Short.BYTES
+        );
         buffer.writeBoolean(success);
         buffer.writeShort(errorCode.getValue());
         return buffer;
