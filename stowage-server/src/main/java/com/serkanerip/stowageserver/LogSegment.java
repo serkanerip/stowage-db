@@ -151,7 +151,7 @@ class LogSegment {
             return new byte[0];
         }
 
-        var buff = ByteBuffer.allocateDirect(valSize);
+        var buff = ByteBuffer.allocate(valSize);
         try {
             int bytesRead;
             int totalBytesRead = 0;

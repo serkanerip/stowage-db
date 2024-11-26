@@ -16,7 +16,7 @@ class EntryRecord {
     public ByteBuffer serialize() {
         var keySize = key.length;
         var valueSize = value.length;
-        var buff = ByteBuffer.allocateDirect(4 + keySize + valueSize + 4);
+        var buff = ByteBuffer.allocate(4 + keySize + valueSize + 4);
         buff.putInt(keySize);
         buff.put(key);
         buff.putInt(valueSize);

@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 class ServerInboundHandler extends ChannelInboundHandlerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerInboundHandler.class);
+    private static final SimpleResponse NO_ER_SIMPLE_RESPONSE = new SimpleResponse(true, ErrorCode.NO_ERR);
 
     private final StowageDB store;
 
@@ -57,8 +58,7 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
                 sendResponse(ctx.channel(), new TransportMessage(
                     TransportMessageType.SIMPLE_RESPONSE,
                     message.getCorrelationId(),
-                    // TODO use a static instance of this response instead of creating new on each response
-                    new SimpleResponse(true, ErrorCode.NO_ERR).encode()
+                    NO_ER_SIMPLE_RESPONSE.encode()
                 ));
             }
             case GET -> {
@@ -76,8 +76,7 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
                 sendResponse(ctx.channel(), new TransportMessage(
                     TransportMessageType.SIMPLE_RESPONSE,
                     message.getCorrelationId(),
-                    // TODO use a static instance of this response instead of creating new on each response
-                    new SimpleResponse(true, ErrorCode.NO_ERR).encode()
+                    NO_ER_SIMPLE_RESPONSE.encode()
                 ));
             }
             default -> {
