@@ -47,7 +47,7 @@ class InMemoryIndex {
         }
         logger.info("InMemoryIndex rebuilt took {} ms", System.currentTimeMillis() - startTime);
         logger.info("index built from {} segments!", maxSequenceNumberList.size());
-        return Collections.max(maxSequenceNumberList);
+        return maxSequenceNumberList.isEmpty() ? 0L : Collections.max(maxSequenceNumberList);
     }
 
     int size() {

@@ -30,6 +30,7 @@ class Benchmark {
     private final byte[][] values;
     private static final AtomicInteger readCounter = new AtomicInteger(0);
     private static final AtomicInteger writeCounter = new AtomicInteger(0);
+    private long testStartTime = 0L;
 
     Benchmark(BenchmarkConfiguration benchmarkConfiguration) {
         this.config = benchmarkConfiguration;
@@ -96,7 +97,14 @@ class Benchmark {
 
         // Main benchmark
         Histogram latencyHistogram = new Histogram(TimeUnit.SECONDS.toNanos(10), 3);
-        long testStartTime = System.nanoTime();
+        this.testStartTime = System.nanoTime();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("here!");
+            long duration = System.nanoTime() - testStartTime;
+            shutdown();
+            printResults(latencyHistogram, duration);
+            logger.info("Performed Read count: {} Write count: {}", readCounter.get(), writeCounter.get());
+        }));
 
         if (config.durationSeconds() > 0) {
             logger.info("Running time-based test for {} seconds...", config.durationSeconds());
