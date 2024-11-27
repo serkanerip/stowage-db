@@ -25,6 +25,7 @@ public class TransportMessage {
 
     private final long corId;
 
+    // TODO possible memory leak
     private final ByteBuf payload;
 
     public TransportMessage(TransportMessageType transportMessageType, long corId, ByteBuf payload) {

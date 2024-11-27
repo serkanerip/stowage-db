@@ -1,5 +1,6 @@
 package com.serkanerip.stowagebenchmark;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
@@ -72,9 +73,8 @@ class Benchmark {
     void populateKeysAndValues() {
         SecureRandom random = new SecureRandom();
         for (int i = 0; i < config.keyCount(); i++) {
-            var key = new byte[config.keySize()];
-            random.nextBytes(key);
-            keys[i] = key;
+            var key = "KEY_KEY_KEY-" + i;
+            keys[i] = key.getBytes(StandardCharsets.UTF_8);
         }
         for (int i = 0; i < config.valueCount(); i++) {
             var value = new byte[config.valueSize()];
@@ -183,22 +183,22 @@ class Benchmark {
 
     private void processRequest(Histogram histogram, boolean isWarmup) {
         try {
-            long startTime = System.nanoTime();
 
             Random random = threadLocalRandom.get();
             double action = random.nextDouble();
             var key = keys[random.nextInt(keys.length)];
 
+            long startTime = System.nanoTime();
             if (action < config.readRatio()) {
                 readCounter.incrementAndGet();
-                client.get(key);
+                var read = client.get(key);
             } else {
                 client.put(key, values[random.nextInt(values.length)]);
                 writeCounter.incrementAndGet();
             }
+            long latency = System.nanoTime() - startTime;
 
             if (!isWarmup) {
-                long latency = System.nanoTime() - startTime;
                 histogram.recordValue(latency);
                 completedRequests.incrementAndGet();
             }
