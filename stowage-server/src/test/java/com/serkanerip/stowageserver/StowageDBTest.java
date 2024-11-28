@@ -1,6 +1,9 @@
 package com.serkanerip.stowageserver;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Random;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
@@ -185,7 +188,30 @@ class StowageDBTest {
     }
 
     @Nested
+    class FileIssuesHandlingTests {
+        @Test
+        void shouldHandleDataFileRemovalWhileDBIsRunning() throws IOException {
+            var val = new byte[65];
+            new Random().nextBytes(val);
+            db.put("key", val);
+
+            Files.list(tempDir).forEach(path -> {
+                try {
+                    Files.delete(path);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            db.shutdown();
+            db = new StowageDB(options);
+
+            assertArrayEquals(val, db.get("key"));
+        }
+    }
+
+    @Nested
     class ErrorHandlingTests {
+
         @Test
         void shouldHandleNullKeyGracefully() {
             var value = "value".getBytes();

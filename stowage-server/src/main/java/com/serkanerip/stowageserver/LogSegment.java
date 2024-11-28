@@ -12,6 +12,7 @@ import java.util.Iterator;
 
 import com.serkanerip.stowageserver.exception.DataEntryReadFailedException;
 import com.serkanerip.stowageserver.exception.DataEntryWriteFailedException;
+import java.util.NoSuchElementException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +44,8 @@ class LogSegment {
     private long unFlushedSize = 0L;
 
     private final long flushThreshold;
+
+    private volatile boolean decommissioned = false;
 
     LogSegment(Path dataPath, State state, long flushThreshold) {
         this.flushThreshold = flushThreshold;
@@ -103,24 +106,44 @@ class LogSegment {
 
     void decommission() {
         try {
-            shutdown();
+            indexChannel.close();
+            fileChannel.close();
             Files.delete(dataPath);
             Files.delete(indexPath);
+            decommissioned = true;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
     void shutdown() {
-        logger.info("Shutting down DataSegment");
-        try {
-            indexChannel.force(true);
-            fileChannel.force(true);
-            indexChannel.close();
-            fileChannel.close();
-        } catch (IOException e) {
-            logger.error("Error while shutting down data segment", e);
+        if (decommissioned) {
+            logger.warn("Cannot shutdown decommissioned log segment {}!", segmentId);
+            return;
         }
+        logger.info("Shutting down log segment {}", segmentId);
+        try {
+            shutdownChannel(fileChannel, dataPath);
+            shutdownChannel(indexChannel, indexPath);
+        } catch (IOException e) {
+            logger.error("Error while shutting down log segment {}", segmentId, e);
+        }
+    }
+
+    private void shutdownChannel(FileChannel ch, Path path) throws IOException {
+        if (!Files.exists(path)) {
+            logger.warn("Path {} does not exist, creating new one!", path);
+            var newCh = FileChannel.open(path,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
+            ch.transferTo(0, ch.size(), newCh);
+            newCh.force(true);
+            newCh.close();
+            ch.close();
+            logger.warn("New file created for path {} and all data transferred from channel!", path);
+            return;
+        }
+        ch.force(true);
+        ch.close();
     }
 
     long getId() {
@@ -227,6 +250,9 @@ class LogSegment {
 
         @Override
         public PersistentEntryMetadata next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
             return PersistentEntryMetadata.deserialize(buffer);
         }
     }
