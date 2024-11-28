@@ -48,9 +48,9 @@ class LogSegment {
     private volatile boolean decommissioned = false;
 
     LogSegment(Path dataPath, State state, long flushThreshold) {
-        this.flushThreshold = flushThreshold;
-        this.state = state;
         this.dataPath = dataPath;
+        this.state = state;
+        this.flushThreshold = flushThreshold;
         this.segmentId = Utils.extractSegmentId(dataPath);
         try {
             this.indexPath = dataPath.getParent().resolve("%s.index".formatted(segmentId));
@@ -64,16 +64,6 @@ class LogSegment {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    void flushToDisk() throws IOException {
-        if (unFlushedSize == 0) {
-            return;
-        }
-        logger.debug("Flushing segment {} to disk", segmentId);
-        fileChannel.force(true);
-        indexChannel.force(true);
-        unFlushedSize = 0L;
     }
 
     void setState(State state) {
@@ -97,7 +87,7 @@ class LogSegment {
         var newMetadata = new PersistentEntryMetadata(
             metadata.key(), metadata.valueSize(), newValOffset, metadata.sequenceNumber()
         );
-        indexChannel.write(newMetadata.serialize());
+        writeToIndex(newMetadata);
         if (unFlushedSize >= flushThreshold) {
             flushToDisk();
         }
@@ -128,22 +118,6 @@ class LogSegment {
         } catch (IOException e) {
             logger.error("Error while shutting down log segment {}", segmentId, e);
         }
-    }
-
-    private void shutdownChannel(FileChannel ch, Path path) throws IOException {
-        if (!Files.exists(path)) {
-            logger.warn("Path {} does not exist, creating new one!", path);
-            var newCh = FileChannel.open(path,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
-            ch.transferTo(0, ch.size(), newCh);
-            newCh.force(true);
-            newCh.close();
-            ch.close();
-            logger.warn("New file created for path {} and all data transferred from channel!", path);
-            return;
-        }
-        ch.force(true);
-        ch.close();
     }
 
     long getId() {
@@ -215,18 +189,54 @@ class LogSegment {
             var valueOffset =
                 dataSize + Integer.BYTES + entryRecord.getKey().length + Integer.BYTES;
             var buffer = entryRecord.serialize();
-            unFlushedSize += buffer.remaining();
-            dataSize += fileChannel.write(buffer);
+            while (buffer.hasRemaining()) {
+                var writtenBytes = fileChannel.write(buffer);
+                unFlushedSize += writtenBytes;
+                dataSize += writtenBytes;
+            }
             var metadata = new PersistentEntryMetadata(
                 entryRecord.getKey(), entryRecord.getValue().length, valueOffset, sequenceNumber
             );
-            indexChannel.write(metadata.serialize());
+            writeToIndex(metadata);
             if (unFlushedSize >= flushThreshold) {
                 flushToDisk();
             }
             return metadata;
         } catch (IOException e) {
             throw new DataEntryWriteFailedException(e);
+        }
+    }
+
+    private void shutdownChannel(FileChannel ch, Path path) throws IOException {
+        if (!Files.exists(path)) {
+            logger.warn("Path {} does not exist, creating new one!", path);
+            var newCh = FileChannel.open(path,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
+            ch.transferTo(0, ch.size(), newCh);
+            newCh.force(true);
+            newCh.close();
+            ch.close();
+            logger.warn("New file created for path {} and all data transferred from channel!", path);
+            return;
+        }
+        ch.force(true);
+        ch.close();
+    }
+
+    private void flushToDisk() throws IOException {
+        if (unFlushedSize == 0) {
+            return;
+        }
+        logger.debug("Flushing segment {} to disk", segmentId);
+        fileChannel.force(true);
+        indexChannel.force(true);
+        unFlushedSize = 0L;
+    }
+
+    private void writeToIndex(PersistentEntryMetadata metadata) throws IOException {
+        var buffer = metadata.serialize();
+        while (buffer.hasRemaining()) {
+            indexChannel.write(buffer);
         }
     }
 

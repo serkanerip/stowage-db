@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 import com.serkanerip.stowagecommon.HeapData;
+import com.serkanerip.stowageserver.exception.DataPathAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,9 +47,10 @@ public class StowageDB {
 
     public StowageDB(ServerOptions options) {
         this.options = Objects.requireNonNull(options);
+        this.ensureHasReadWritePermissions(options.dataRootPath());
         this.compacter = new LogSegmentCompacter(this);
         this.inMemoryIndex = new InMemoryIndex(segmentStats);
-        start();
+        this.start();
     }
 
     /**
@@ -77,7 +80,6 @@ public class StowageDB {
                 }
                 var totalNumberOfEntries = inMemoryIndex.size();
                 logger.info("Total number of entries: {}", totalNumberOfEntries);
-                // logger.info("Total number of entries: {}", segmentStats.size());
                 segmentStats.forEach((id, stats) -> logger.info("Segment {} stats {}", id, stats));
             }
         });
@@ -239,6 +241,22 @@ public class StowageDB {
         return new HashMap<>(segmentStats);
     }
 
+    private void ensureHasReadWritePermissions(Path path) {
+        if (!Files.exists(path)) {
+            try {
+                Files.createDirectories(path);
+            } catch (IOException e) {
+                throw new DataPathAccessException(
+                    String.format("Failed to create the file at '%s'.", path), e
+                );
+            }
+        }
+
+        if (!Files.isReadable(path) || !Files.isWritable(path)) {
+            throw new DataPathAccessException(path);
+        }
+    }
+
     private void deleteEmptySegments() {
         var emptySegmentIds = new ArrayList<Long>();
         segments.forEach((id, segment) -> {
@@ -251,16 +269,8 @@ public class StowageDB {
 
     private void buildSegmentsFromFiles() {
         var dataRootPath = options.dataRootPath();
-        try {
-            if (!dataRootPath.toFile().exists() && !dataRootPath.toFile().mkdirs()) {
-                throw new RuntimeException();
-            }
-        } catch (Exception e) {
-            logger.error("Failed to create data root path, shutting down!", e);
-            System.exit(1);
-        }
-        try {
-            Files.list(dataRootPath).filter(Files::isRegularFile)
+        try (var files = Files.list(dataRootPath)) {
+            files.filter(Files::isRegularFile)
                 .filter(path -> path.getFileName().toString().endsWith(".data"))
                 .forEach(path -> {
                     var id = Utils.extractSegmentId(path);

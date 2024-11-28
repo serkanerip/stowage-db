@@ -1,9 +1,13 @@
 package com.serkanerip.stowageserver;
 
+import com.serkanerip.stowageserver.exception.DataPathAccessException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Random;
+import java.util.Set;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
@@ -41,6 +45,37 @@ class StowageDBTest {
     class BasicOperations {
 
         private static final byte[] KEY_1 = "key1".getBytes(StandardCharsets.UTF_8);
+
+        @Test
+        void shouldThrowExceptionWhenPathIsNotReadableOrWritable(@TempDir Path path)
+            throws IOException {
+            Files.createDirectories(path);
+
+            Set<PosixFilePermission> noPermissions = PosixFilePermissions.fromString("---------");
+            Files.setPosixFilePermissions(path, noPermissions);
+
+            var serverOptions = ServerOptions.builder()
+                .dataRootPath(path)
+                .build();
+            assertThrows(DataPathAccessException.class, () -> {
+                new StowageDB(serverOptions);
+            });
+        }
+
+        @Test
+        void shouldThrowExceptionWhenUnableToCreateDirectoryDueToAccess(@TempDir Path tempDir) throws IOException {
+            Path nonExistFilePath = tempDir.resolve("restricted_directory");
+
+            Set<PosixFilePermission> noWritePermissions = PosixFilePermissions.fromString("r-xr-xr-x"); // Readable but not writable
+            Files.setPosixFilePermissions(tempDir, noWritePermissions);
+
+            var serverOptions = ServerOptions.builder()
+                .dataRootPath(nonExistFilePath)
+                .build();
+            assertThrows(DataPathAccessException.class, () -> {
+                new StowageDB(serverOptions);
+            });
+        }
 
         @Test
         void shouldPutAndGetValue() {
