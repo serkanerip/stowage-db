@@ -1,5 +1,8 @@
 package com.serkanerip.stowageserver;
 
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import com.serkanerip.stowagecommon.TransportMessageCodec;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -32,10 +35,25 @@ class NettyServer {
     }
 
     void start(String inetHost, int port) {
-        bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup(
-            Runtime.getRuntime().availableProcessors()
-        );
+        bossGroup = new NioEventLoopGroup(1, new ThreadFactory() {
+            private static final AtomicInteger counter = new AtomicInteger(1);
+            @Override
+            public Thread newThread(Runnable r) {
+                return Thread.ofPlatform()
+                    .name("stowage-server-boss", counter.getAndIncrement())
+                    .unstarted(r);
+            }
+        });
+        workerGroup = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors(),
+            new ThreadFactory() {
+            private static final AtomicInteger counter = new AtomicInteger(1);
+            @Override
+            public Thread newThread(Runnable r) {
+                return Thread.ofPlatform()
+                    .name("stowage-server-worker", counter.getAndIncrement())
+                    .unstarted(r);
+            }
+        });
         logger.info("Starting the Netty server with {} loops for bossGroup and {} loops for workerGroup",
             bossGroup.executorCount(), workerGroup.executorCount()
         );

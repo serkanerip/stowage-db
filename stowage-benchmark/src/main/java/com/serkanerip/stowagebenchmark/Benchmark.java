@@ -132,7 +132,7 @@ class Benchmark {
                 try {
                     var requestCount = 0L;
                     while (System.nanoTime() < endTime && running.get()) {
-                        processRequest(histogram, isWarmup);
+                        processRequest(client, histogram, isWarmup);
                         requestCount++;
                     }
                     logger.info("{} request sent by {}", requestCount, Thread.currentThread().getName());
@@ -158,7 +158,7 @@ class Benchmark {
             workers[i] = Thread.ofVirtual().start(() -> {
                 try {
                     for (int c = 0; c < config.requestCount(); c++) {
-                        processRequest(histogram, false);
+                        processRequest(client, histogram, false);
                     }
                 } finally {
                     latch.countDown();
@@ -175,7 +175,7 @@ class Benchmark {
         }
     }
 
-    private void processRequest(Histogram histogram, boolean isWarmup) {
+    private void processRequest(Client clientToUse, Histogram histogram, boolean isWarmup) {
         try {
 
             Random random = threadLocalRandom.get();
@@ -185,9 +185,9 @@ class Benchmark {
             long startTime = System.nanoTime();
             if (action < config.readRatio()) {
                 readCounter.incrementAndGet();
-                client.get(key);
+                clientToUse.get(key);
             } else {
-                client.put(key, values[random.nextInt(values.length)]);
+                clientToUse.put(key, values[random.nextInt(values.length)]);
                 writeCounter.incrementAndGet();
             }
             long latency = System.nanoTime() - startTime;
