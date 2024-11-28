@@ -31,7 +31,6 @@ class Benchmark {
     private final byte[][] values;
     private static final AtomicInteger readCounter = new AtomicInteger(0);
     private static final AtomicInteger writeCounter = new AtomicInteger(0);
-    private long testStartTime = 0L;
 
     Benchmark(BenchmarkConfiguration benchmarkConfiguration) {
         this.config = benchmarkConfiguration;
@@ -97,15 +96,7 @@ class Benchmark {
 
         // Main benchmark
         Histogram latencyHistogram = new Histogram(TimeUnit.SECONDS.toNanos(10), 3);
-        this.testStartTime = System.nanoTime();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("here!");
-            long duration = System.nanoTime() - testStartTime;
-            shutdown();
-            printResults(latencyHistogram, duration);
-            logger.info("Performed Read count: {} Write count: {}", readCounter.get(), writeCounter.get());
-        }));
-
+        var testStartTime = System.nanoTime();
         if (config.durationSeconds() > 0) {
             logger.info("Running time-based test for {} seconds...", config.durationSeconds());
             runForDuration(config.durationSeconds(), latencyHistogram, false);
@@ -137,11 +128,14 @@ class Benchmark {
         CountDownLatch latch = new CountDownLatch(config.threadCount());
 
         for (int i = 0; i < config.threadCount(); i++) {
-            workers[i] = Thread.ofVirtual().start(() -> {
+            workers[i] = Thread.ofPlatform().start(() -> {
                 try {
+                    var requestCount = 0L;
                     while (System.nanoTime() < endTime && running.get()) {
                         processRequest(histogram, isWarmup);
+                        requestCount++;
                     }
+                    logger.info("{} request sent by {}", requestCount, Thread.currentThread().getName());
                 } finally {
                     latch.countDown();
                     threadLocalRandom.remove();
@@ -191,7 +185,7 @@ class Benchmark {
             long startTime = System.nanoTime();
             if (action < config.readRatio()) {
                 readCounter.incrementAndGet();
-                var read = client.get(key);
+                client.get(key);
             } else {
                 client.put(key, values[random.nextInt(values.length)]);
                 writeCounter.incrementAndGet();
