@@ -29,7 +29,7 @@ class NettyClient {
     private final ConcurrentMap<Long, OngoingRequest> requestsMap = new ConcurrentHashMap<>();
 
     public NettyClient() {
-        this.monitoringThread = Thread.ofVirtual().start(() -> {
+        this.monitoringThread = Thread.ofVirtual().unstarted(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     Thread.sleep(5000);
@@ -44,6 +44,7 @@ class NettyClient {
     }
 
     void start(String host, int port) {
+        this.monitoringThread.start();
         workerGroup = new NioEventLoopGroup();
         try {
             Bootstrap b = new Bootstrap();
