@@ -22,7 +22,6 @@ class Benchmark {
 
     private final BenchmarkConfiguration config;
 
-    private final Client client;
     private final Thread[] workers;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicInteger completedRequests = new AtomicInteger(0);
@@ -36,7 +35,6 @@ class Benchmark {
         this.config = benchmarkConfiguration;
 
         logger.info("Connecting to the {}:{}", HOST, PORT);
-        this.client = new Client(HOST, PORT);  // Replace with configurable host/port
         this.workers = new Thread[config.threadCount()];
         this.keys = new byte[config.keyCount()][];
         this.values = new byte[config.valueCount()][];
@@ -46,6 +44,7 @@ class Benchmark {
 
     private void fillServerWithDesiredEntryCount() {
         logger.info("Filling server with {} entry", config.desiredEntryCountBeforeTest());
+        var client = new Client(HOST, PORT);  // Replace with configurable host/port
         try (var es = Executors.newFixedThreadPool(config.threadCount())) {
             SecureRandom random = new SecureRandom();
             var entryCountToCreate =
@@ -60,6 +59,7 @@ class Benchmark {
             }
             try {
                 countDownLatch.await();
+                client.shutdown();
             } catch (InterruptedException e) {
                 logger.error("Interrupted while waiting for keys to be created", e);
                 System.exit(1);
@@ -130,11 +130,13 @@ class Benchmark {
         for (int i = 0; i < config.threadCount(); i++) {
             workers[i] = Thread.ofPlatform().start(() -> {
                 try {
+                    var client = new Client(HOST, PORT);
                     var requestCount = 0L;
                     while (System.nanoTime() < endTime && running.get()) {
                         processRequest(client, histogram, isWarmup);
                         requestCount++;
                     }
+                    client.shutdown();
                     logger.info("{} request sent by {}", requestCount, Thread.currentThread().getName());
                 } finally {
                     latch.countDown();
@@ -157,9 +159,11 @@ class Benchmark {
         for (int i = 0; i < config.threadCount(); i++) {
             workers[i] = Thread.ofVirtual().start(() -> {
                 try {
+                    var client = new Client(HOST, PORT);
                     for (int c = 0; c < config.requestCount(); c++) {
                         processRequest(client, histogram, false);
                     }
+                    client.shutdown();
                 } finally {
                     latch.countDown();
                     threadLocalRandom.remove();
@@ -257,7 +261,6 @@ class Benchmark {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        client.shutdown();
         logger.info("Benchmark completed.");
     }
 
