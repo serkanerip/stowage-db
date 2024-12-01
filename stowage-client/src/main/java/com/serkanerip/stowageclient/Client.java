@@ -50,6 +50,7 @@ public class Client extends ChannelInboundHandlerAdapter {
     private final int port;
 
     public Client(String host, int port, long requestTimeoutInMillis) {
+        this.validateHostAndPort(host, port);
         this.host = host;
         this.port = port;
         this.requestTimeoutInMillis = requestTimeoutInMillis;
@@ -80,7 +81,6 @@ public class Client extends ChannelInboundHandlerAdapter {
                         .addLast(new TransportMessageCodec(), new InboundHandler());
                 }
             });
-        validateHostAndPort(Objects.requireNonNull(host), port);
         connectToServer();
     }
 
@@ -251,6 +251,12 @@ public class Client extends ChannelInboundHandlerAdapter {
         }
     }
 
+    public static class ClientConnectionException extends RuntimeException {
+        public ClientConnectionException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     private class InboundHandler extends ChannelInboundHandlerAdapter {
 
         @Override
@@ -293,12 +299,5 @@ public class Client extends ChannelInboundHandlerAdapter {
         }
 
     }
-
-    public static class ClientConnectionException extends RuntimeException {
-        public ClientConnectionException(String message, Throwable cause) {
-            super(message, cause);
-        }
-    }
-
 
 }
