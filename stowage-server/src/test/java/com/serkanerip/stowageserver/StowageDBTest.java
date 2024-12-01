@@ -107,6 +107,14 @@ class StowageDBTest {
             db.delete(KEY_1);
             assertNull(db.get(KEY_1));
         }
+
+        @Test
+        void shouldDeleteValueByStringKey() {
+            byte[] value = "test-value".getBytes();
+            db.put("key", value);
+            db.delete("key");
+            assertNull(db.get("key"));
+        }
     }
 
     @Nested

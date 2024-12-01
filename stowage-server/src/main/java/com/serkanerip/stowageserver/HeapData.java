@@ -10,10 +10,6 @@ class HeapData implements Serializable {
         this.payload = payload;
     }
 
-    byte[] toByteArray() {
-        return payload;
-    }
-
     int size() {
         return payload.length;
     }
