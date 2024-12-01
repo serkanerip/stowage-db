@@ -4,8 +4,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 public class SimpleResponse implements MessagePayload {
+    public static final SimpleResponse SR_SUCCESS = new SimpleResponse(true, ErrorCode.NO_ERR);
     private final boolean success;
-
     private final ErrorCode errorCode;
 
     public SimpleResponse(boolean success, ErrorCode errorCode) {

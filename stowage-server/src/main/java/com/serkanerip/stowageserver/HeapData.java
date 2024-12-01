@@ -1,20 +1,20 @@
-package com.serkanerip.stowagecommon;
+package com.serkanerip.stowageserver;
 
 import java.io.Serializable;
 import java.util.Arrays;
 
-public class HeapData implements Serializable {
+class HeapData implements Serializable {
     private final byte[] payload;
 
-    public HeapData(byte[] payload) {
+    HeapData(byte[] payload) {
         this.payload = payload;
     }
 
-    public byte[] toByteArray() {
+    byte[] toByteArray() {
         return payload;
     }
 
-    public int size() {
+    int size() {
         return payload.length;
     }
 

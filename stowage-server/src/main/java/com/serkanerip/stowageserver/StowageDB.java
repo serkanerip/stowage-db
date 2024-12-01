@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.serkanerip.stowagecommon.HeapData;
 import com.serkanerip.stowageserver.exception.DataPathAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
