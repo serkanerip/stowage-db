@@ -14,7 +14,7 @@ public record ServerOptions(
     // Default values stored in a map with field name as key
     private static final Map<String, Object> DEFAULT_VALUES = Map.of(
         "inetHost", "localhost",
-        "inetPort", 3030,
+        "inetPort", 3065,
         "dataRootPath", "./stowage-data",
         "compactionThreshold", 0.5,
         "maxFileSize", 1024L * 1024 * 1024,

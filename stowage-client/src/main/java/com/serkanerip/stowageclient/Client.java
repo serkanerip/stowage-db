@@ -36,24 +36,21 @@ import org.slf4j.LoggerFactory;
 public class Client extends ChannelInboundHandlerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
+    private static final String MESSAGE_KEY_NOT_NULL = "Key cannot be null";
+    private static final AtomicLong correlationId = new AtomicLong(0);
+
     private final Bootstrap bootstrap;
     private final EventLoopGroup workerGroup;
-    private final long requestTimeoutInMillis;
-    private Channel clientChannel;
     private final Thread monitoringThread;
-    private static final AtomicLong correlationId = new AtomicLong(0);
     private final ConcurrentMap<Long, CompletableFuture<MessagePayload>> requestsMap
         = new ConcurrentHashMap<>();
+    private final ClientConfig clientConfig;
+
     private volatile boolean shuttingDown = false;
+    private Channel clientChannel;
 
-    private final String host;
-    private final int port;
-
-    public Client(String host, int port, long requestTimeoutInMillis) {
-        this.validateHostAndPort(host, port);
-        this.host = host;
-        this.port = port;
-        this.requestTimeoutInMillis = requestTimeoutInMillis;
+    public Client(ClientConfig clientConfig) {
+        this.clientConfig = clientConfig;
         this.monitoringThread = Thread.ofVirtual().start(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 if (clientChannel == null || !clientChannel.isActive()) {
@@ -85,7 +82,7 @@ public class Client extends ChannelInboundHandlerAdapter {
     }
 
     public Client(String host, int port) {
-        this(host, port, 5000);
+        this(new ClientConfig.Builder().host(host).port(port).build());
     }
 
     public synchronized void shutdown() {
@@ -104,23 +101,9 @@ public class Client extends ChannelInboundHandlerAdapter {
     }
 
     public byte[] get(byte[] key) {
-        var request = new GetRequest(Objects.requireNonNull(key, "Key cannot be null"));
-        var future = sendMessage(request);
-        try {
-            var responsePayload = future.get();
-            if (responsePayload instanceof GetResponse response) {
-                return response.getValue();
-            }
-            throw new IllegalStateException("Unexpected response type: " + responsePayload.getType());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof TimeoutException) {
-                throw new RequestTimeoutException("Failed to get response from server in time");
-            }
-            throw new RuntimeException(e);
-        }
+        var request = new GetRequest(Objects.requireNonNull(key, MESSAGE_KEY_NOT_NULL));
+        GetResponse response = (GetResponse) sendMessage(request);
+        return response.getValue();
     }
 
     public boolean isActive() {
@@ -128,55 +111,18 @@ public class Client extends ChannelInboundHandlerAdapter {
     }
 
     public boolean delete(byte[] key) {
-        var request = new DeleteRequest(Objects.requireNonNull(key, "Key cannot be null"));
-        var future = sendMessage(request);
-        try {
-            var responsePayload = future.get();
-            if (responsePayload instanceof SimpleResponse response) {
-                return response.isSuccess();
-            }
-            throw new IllegalStateException("Unexpected response type: " + responsePayload.getType());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof TimeoutException) {
-                throw new RequestTimeoutException("Failed to get response from server in time");
-            }
-            throw new RuntimeException(e);
-        }
+        var request = new DeleteRequest(Objects.requireNonNull(key, MESSAGE_KEY_NOT_NULL));
+        SimpleResponse response = (SimpleResponse) sendMessage(request);
+        return response.isSuccess();
     }
 
     public boolean put(byte[] key, byte[] value) {
         var payload = new PutRequest(
-            Objects.requireNonNull(key, "Key cannot be null"),
+            Objects.requireNonNull(key, MESSAGE_KEY_NOT_NULL),
             Objects.requireNonNull(value, "Value cannot be null")
         );
-        var future = sendMessage(payload);
-        try {
-            var responsePayload = future.get();
-            if (responsePayload instanceof SimpleResponse sr) {
-                return sr.isSuccess();
-            }
-            throw new IllegalStateException("Unexpected response type: " + responsePayload.getType());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof TimeoutException) {
-                throw new RequestTimeoutException("Failed to get response from server in time");
-            }
-            throw new RuntimeException(e);
-        }
-    }
-
-    private void validateHostAndPort(String host, int port) {
-        if (host == null || host.trim().isEmpty()) {
-            throw new IllegalArgumentException("Host cannot be null or empty");
-        }
-        if (port < 1 || port > 65535) {
-            throw new IllegalArgumentException("Port must be between 1 and 65535");
-        }
+        SimpleResponse response = (SimpleResponse) sendMessage(payload);
+        return response.isSuccess();
     }
 
     private synchronized void connectToServer() {
@@ -189,21 +135,23 @@ public class Client extends ChannelInboundHandlerAdapter {
 
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                clientChannel = bootstrap.connect(host, port).sync().channel();
-                logger.info("Connected to the {}:{}", host, port);
+                clientChannel = bootstrap.connect(clientConfig.host(), clientConfig.port()).sync().channel();
+                logger.info("Connected to the {}:{}", clientConfig.host(), clientConfig.port());
                 break;
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException("Client interrupted while connecting to server!");
+                throw new RuntimeException("Thread interrupted while connecting to server");
             } catch (Exception e) {
                 attempt++;
                 if (attempt > maxRetries) {
-                    var message = "Failed to connect to %s:%d after %d attempts".formatted(host, port, maxRetries);
+                    var message = "Failed to connect to %s:%d after %d attempts".formatted(
+                        clientConfig.host(), clientConfig.port(), maxRetries
+                    );
                     throw new ClientConnectionException(message, e);
                 }
                 int backoffMillis = calculateBackoff(baseBackoffMillis, attempt);
                 logger.warn("Attempt {}/{} to connect to {}:{} failed. Retrying in {} ms.",
-                    attempt, maxRetries, host, port, backoffMillis, e);
+                    attempt, maxRetries, clientConfig.host(), clientConfig.port(), backoffMillis, e);
                 sleep(backoffMillis);
             }
         }
@@ -223,7 +171,7 @@ public class Client extends ChannelInboundHandlerAdapter {
         }
     }
 
-    private CompletableFuture<MessagePayload> sendMessage(MessagePayload payload) {
+    private MessagePayload sendMessage(MessagePayload payload) {
         if (clientChannel == null || !clientChannel.isActive()) {
             connectToServer();
         }
@@ -242,7 +190,19 @@ public class Client extends ChannelInboundHandlerAdapter {
                 future.completeExceptionally(f.cause());
             }
         });
-        return future.orTimeout(requestTimeoutInMillis, TimeUnit.MILLISECONDS);
+        try {
+            return future
+                .orTimeout(clientConfig.requestTimeout(), TimeUnit.MILLISECONDS)
+                .get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof TimeoutException) {
+                throw new RequestTimeoutException("Failed to get response from server in time");
+            }
+            throw new RuntimeException(e);
+        }
     }
 
     public static class RequestTimeoutException extends RuntimeException {

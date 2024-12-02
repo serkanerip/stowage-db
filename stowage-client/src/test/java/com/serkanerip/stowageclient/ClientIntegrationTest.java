@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Timeout;
 class ClientIntegrationTest {
 
     // Should be lower than JUnit @Timeout value
-    private static final long REQUEST_TIMEOUT = 1000;
+    private static final int REQUEST_TIMEOUT = 1000;
 
     private ServerSocket serverSocket;
     private Client client;
@@ -43,7 +43,11 @@ class ClientIntegrationTest {
     @BeforeEach
     void setUp() throws IOException {
         serverSocket = new ServerSocket(0); // automatically allocate port number
-        client = new Client("localhost", serverSocket.getLocalPort(), REQUEST_TIMEOUT);
+        client = new Client(ClientConfig.builder()
+            .port(serverSocket.getLocalPort())
+            .requestTimeout(REQUEST_TIMEOUT)
+            .build()
+        );
     }
 
     @AfterEach
@@ -233,12 +237,17 @@ class ClientIntegrationTest {
 
     @Test
     void testClientCreationWithNullHost() {
-        assertThrows(NullPointerException.class, () -> new Client(null, 8080));
+        assertThrows(IllegalArgumentException.class, () -> new Client(null, 8080));
     }
 
     @Test
     void testClientCreationWithInvalidPort() {
         assertThrows(IllegalArgumentException.class, () -> new Client("localhost", -1));
+    }
+
+    @Test
+    void testClientCreationWithNegativeTimeout() {
+        assertThrows(IllegalArgumentException.class, () -> ClientConfig.builder().requestTimeout(-1).build());
     }
 
     private static Thread handleClientMessage(
