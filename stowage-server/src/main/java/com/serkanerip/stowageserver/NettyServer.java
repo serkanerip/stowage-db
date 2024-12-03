@@ -57,30 +57,26 @@ class NettyServer {
         logger.info("Starting the Netty server with {} loops for bossGroup and {} loops for workerGroup",
             bossGroup.executorCount(), workerGroup.executorCount()
         );
-        try {
-            ServerBootstrap b = new ServerBootstrap();
-            b.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
-                .option(ChannelOption.SO_BACKLOG, 128)
-                .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .handler(new LoggingHandler(LogLevel.INFO))
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        logger.debug("Initializing channel {}", ch);
-                        ch.pipeline().addLast(
-                            new TransportMessageCodec(), inboundHandler
-                        );
-                        clientChannels.add(ch);
-                    }
-                });
+        ServerBootstrap b = new ServerBootstrap();
+        b.group(bossGroup, workerGroup)
+            .channel(NioServerSocketChannel.class)
+            .option(ChannelOption.SO_BACKLOG, 128)
+            .childOption(ChannelOption.SO_KEEPALIVE, true)
+            .handler(new LoggingHandler(LogLevel.INFO))
+            .childHandler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) {
+                    logger.debug("Initializing channel {}", ch);
+                    ch.pipeline().addLast(
+                        new TransportMessageCodec(), inboundHandler
+                    );
+                    clientChannels.add(ch);
+                }
+            });
 
-            // Bind and start to accept incoming connections asynchronously
-            serverChannel = b.bind(inetHost, port).syncUninterruptibly().channel();
-            logger.info("Server started and listening on port {}", port);
-        } catch (Exception e) {
-            logger.error("Failed to start server", e);
-        }
+        // Bind and start to accept incoming connections asynchronously
+        serverChannel = b.bind(inetHost, port).syncUninterruptibly().channel();
+        logger.info("Server started and listening on port {}", port);
     }
 
     void shutdown() {

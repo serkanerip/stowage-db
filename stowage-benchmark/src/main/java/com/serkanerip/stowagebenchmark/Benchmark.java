@@ -18,7 +18,7 @@ class Benchmark {
     private static final Logger logger = LoggerFactory.getLogger(Benchmark.class);
     private static final String HOST = System.getenv().getOrDefault("KV_STORE_HOST", "localhost");
     private static final int PORT =
-        Integer.parseInt(System.getenv().getOrDefault("KV_STORE_PORT", "3030"));
+        Integer.parseInt(System.getenv().getOrDefault("KV_STORE_PORT", "3065"));
 
     private final BenchmarkConfiguration config;
 

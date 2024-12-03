@@ -25,7 +25,7 @@ public class TransportMessage {
 
     private final long corId;
 
-    // TODO possible memory leak
+    // Pooled buffer is released in handler methods
     private final ByteBuf payload;
 
     public TransportMessage(TransportMessageType transportMessageType, long corId, ByteBuf payload) {

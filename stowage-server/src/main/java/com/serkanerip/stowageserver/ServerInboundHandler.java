@@ -40,7 +40,11 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         var message = (TransportMessage) msg;
-        handleMessage(ctx, message);
+        try {
+            handleMessage(ctx, message);
+        } finally {
+            message.getPayload().release();
+        }
     }
 
     private void handleMessage(ChannelHandlerContext ctx, TransportMessage message) {
@@ -87,7 +91,6 @@ class ServerInboundHandler extends ChannelInboundHandlerAdapter {
                 ctx.close();
             }
         }
-        payload.release();
     }
 
     private void sendResponse(Channel channel, TransportMessage message) {

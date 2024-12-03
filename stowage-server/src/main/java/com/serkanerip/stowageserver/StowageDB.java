@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
 
 import com.serkanerip.stowageserver.exception.DataPathAccessException;
 import org.slf4j.Logger;
@@ -32,7 +31,7 @@ public class StowageDB {
 
     private final InMemoryIndex inMemoryIndex;
 
-    private final ReentrantLock writeLock = new ReentrantLock(true);
+    private final Object writeLock = new Object();
 
     private final LogSegmentCompacter compacter;
 
@@ -152,16 +151,13 @@ public class StowageDB {
         if (rawValue == null) {
             throw new IllegalArgumentException("Value cannot be null!");
         }
-        writeLock.lock();
-        try {
+        synchronized (writeLock) {
             var metadata = activeSegment.write(rawKey, rawValue, nextSequenceNumber.incrementAndGet());
             var inMemoryMetadata = InMemoryIndex.MemoryEntryMetadata.fromPersistedEntryMetadata(
                 activeSegment.getId(), metadata
             );
             inMemoryIndex.put(new HeapData(rawKey), inMemoryMetadata);
             afterPut();
-        } finally {
-            writeLock.unlock();
         }
     }
 

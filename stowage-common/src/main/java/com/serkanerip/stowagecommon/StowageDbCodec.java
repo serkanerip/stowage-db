@@ -40,7 +40,10 @@ public class StowageDbCodec {
         }
 
         var id = byteBuf.readLong();
-        ByteBuf payload = byteBuf.readBytes(size - TransportMessage.HEADER_SIZE);
+        var bytesToRead = size - TransportMessage.HEADER_SIZE;
+        ByteBuf payload = byteBuf.slice(byteBuf.readerIndex(), bytesToRead);
+        byteBuf.readerIndex(byteBuf.readerIndex() + bytesToRead);
+        payload.retain();
 
         message = new TransportMessage(type, id, payload);
         return message;
