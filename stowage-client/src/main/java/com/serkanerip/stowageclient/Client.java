@@ -1,13 +1,11 @@
 package com.serkanerip.stowageclient;
 
-import java.nio.channels.ClosedChannelException;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.serkanerip.stowagecommon.DeleteRequest;
@@ -33,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @ChannelHandler.Sharable
-public class Client extends ChannelInboundHandlerAdapter {
+public class Client extends ChannelInboundHandlerAdapter implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
     private static final String MESSAGE_KEY_NOT_NULL = "Key cannot be null";
@@ -129,8 +127,8 @@ public class Client extends ChannelInboundHandlerAdapter {
         if (clientChannel != null && clientChannel.isActive()) {
             return;
         }
-        int maxRetries = 3;
-        int baseBackoffMillis = 500; // 0.5 second base backoff
+        int maxRetries = clientConfig.connectRetryPolicy().maxRetries();
+        int baseBackoffMillis = clientConfig.connectRetryPolicy().baseBackoffMillis();
         int attempt = 0;
 
         while (!Thread.currentThread().isInterrupted()) {
@@ -140,14 +138,14 @@ public class Client extends ChannelInboundHandlerAdapter {
                 break;
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException("Thread interrupted while connecting to server");
+                throw new ConnectionException("Thread interrupted while connecting to server", ie);
             } catch (Exception e) {
                 attempt++;
                 if (attempt > maxRetries) {
                     var message = "Failed to connect to %s:%d after %d attempts".formatted(
                         clientConfig.host(), clientConfig.port(), maxRetries
                     );
-                    throw new ClientConnectionException(message, e);
+                    throw new ConnectionException(message, e);
                 }
                 int backoffMillis = calculateBackoff(baseBackoffMillis, attempt);
                 logger.warn("Attempt {}/{} to connect to {}:{} failed. Retrying in {} ms.",
@@ -183,10 +181,7 @@ public class Client extends ChannelInboundHandlerAdapter {
         logger.debug("Sending message of type: {} with size: {} corId: {}", message.getType(),
             message.getSize(), message.getCorrelationId());
         clientChannel.writeAndFlush(message).addListener(f -> {
-            if (f.isSuccess()) {
-                return;
-            }
-            if (f.cause() instanceof ClosedChannelException) {
+            if (!f.isSuccess()) {
                 future.completeExceptionally(f.cause());
             }
         });
@@ -196,23 +191,33 @@ public class Client extends ChannelInboundHandlerAdapter {
                 .get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
+            throw new RequestException("Request interrupted while waiting for a response", e);
         } catch (ExecutionException e) {
-            if (e.getCause() instanceof TimeoutException) {
-                throw new RequestTimeoutException("Failed to get response from server in time");
-            }
-            throw new RuntimeException(e);
+            throw new RequestException("Request execution failed", e.getCause());
+        } finally {
+            requestsMap.remove(id);
         }
     }
 
-    public static class RequestTimeoutException extends RuntimeException {
-        public RequestTimeoutException(String message) {
-            super(message);
+    @Override
+    public void close() throws Exception {
+        shutdown();
+    }
+
+    public static class ClientException extends RuntimeException {
+        public ClientException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
-    public static class ClientConnectionException extends RuntimeException {
-        public ClientConnectionException(String message, Throwable cause) {
+    public static class ConnectionException extends ClientException {
+        public ConnectionException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    public static class RequestException extends ClientException {
+        public RequestException(String message, Throwable cause) {
             super(message, cause);
         }
     }
@@ -238,7 +243,7 @@ public class Client extends ChannelInboundHandlerAdapter {
             logger.debug("Received message of type: {} with size: {} uuid: {}",
                 transportMessage.getType(), transportMessage.getSize(), transportMessage.getCorrelationId());
             var uuid = transportMessage.getCorrelationId();
-            var future = requestsMap.remove(uuid);
+            var future = requestsMap.get(uuid);
             if (future != null) {
                 var framePayload = switch (transportMessage.getType()) {
                     case SIMPLE_RESPONSE -> SimpleResponse.decode(transportMessage.getPayload());

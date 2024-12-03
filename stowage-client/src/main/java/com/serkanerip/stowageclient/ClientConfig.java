@@ -1,6 +1,9 @@
 package com.serkanerip.stowageclient;
 
-public record ClientConfig(String host, int port, int requestTimeout) {
+public record ClientConfig(
+    String host, int port, int requestTimeout,
+    RetryPolicy connectRetryPolicy
+) {
 
     public ClientConfig {
         if (host == null || host.trim().isEmpty()) {
@@ -18,10 +21,23 @@ public record ClientConfig(String host, int port, int requestTimeout) {
         return new Builder();
     }
 
+    public record RetryPolicy(int maxRetries, int baseBackoffMillis) {
+
+        public RetryPolicy {
+            if (maxRetries < 0) {
+                throw new IllegalArgumentException("Max retries must be a positive number");
+            }
+            if (baseBackoffMillis < 0) {
+                throw new IllegalArgumentException("Base backoff millis must be a positive number");
+            }
+        }
+    }
+
     public static class Builder {
         private String host = "localhost";
         private int port = 3065;
         private int requestTimeout = 5000;
+        private RetryPolicy connectRetryPolicy = new RetryPolicy(3, 500);
 
         /**
          * Sets the host for the stowage server.
@@ -73,8 +89,38 @@ public record ClientConfig(String host, int port, int requestTimeout) {
             return this;
         }
 
+        /**
+         * Sets the retry policy for connection attempts, including an exponential backoff strategy for delays.
+         *
+         * @param retryPolicy the {@link RetryPolicy} instance specifying:
+         *                    - The maximum number of retry attempts.
+         *                    - The base delay (in milliseconds) between attempts, which will be
+         *                      exponentially increased using the formula:
+         *                      <pre>
+         *                          delay = Math.min(baseBackoffMillis * (2^(attempt-1)), 10000);
+         *                      </pre>
+         *                      The delay is capped at a maximum of 10,000 milliseconds (10 seconds).
+         * @return the current Builder instance for chaining.
+         * Example:
+         * <pre>
+         *     RetryPolicy retryPolicy = new RetryPolicy(5, 500); // 5 retries with exponential backoff
+         *     new Builder().connectRetryPolicy(retryPolicy).build();
+         * </pre>
+         *
+         * Notes:
+         * - Ensure the {@code retryPolicy} values are meaningful. For instance:
+         *   - Retries should be >= 0.
+         *   - Base delay should be a positive integer.
+         * - The exponential backoff prevents overwhelming the server by progressively increasing wait time
+         *   between attempts, but with a reasonable cap to maintain responsiveness.
+         */
+        public Builder connectRetryPolicy(RetryPolicy retryPolicy) {
+            this.connectRetryPolicy = retryPolicy;
+            return this;
+        }
+
         public ClientConfig build() {
-            return new ClientConfig(host, port, requestTimeout);
+            return new ClientConfig(host, port, requestTimeout, connectRetryPolicy);
         }
     }
 

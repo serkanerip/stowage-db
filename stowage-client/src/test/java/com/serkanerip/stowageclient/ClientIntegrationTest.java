@@ -3,6 +3,7 @@ package com.serkanerip.stowageclient;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -189,7 +191,7 @@ class ClientIntegrationTest {
         var key = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
         var value = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
 
-        assertThrows(Client.ClientConnectionException.class, () -> client.put(key, value));
+        assertThrows(Client.ConnectionException.class, () -> client.put(key, value));
     }
 
     @Test
@@ -198,7 +200,7 @@ class ClientIntegrationTest {
         Thread.sleep(50);
         var key = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
 
-        assertThrows(Client.ClientConnectionException.class, () -> client.get(key));
+        assertThrows(Client.ConnectionException.class, () -> client.get(key));
     }
 
     @Test
@@ -210,7 +212,7 @@ class ClientIntegrationTest {
         );
         var key = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
 
-        assertThrows(Client.ClientConnectionException.class, () -> client.delete(key));
+        assertThrows(Client.ConnectionException.class, () -> client.delete(key));
     }
 
     @Test
@@ -218,21 +220,24 @@ class ClientIntegrationTest {
         var key = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
         var value = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
 
-        assertThrows(Client.RequestTimeoutException.class, () -> client.put(key, value));
+        var exception = assertThrows(Client.RequestException.class, () -> client.put(key, value));
+        assertInstanceOf(TimeoutException.class, exception.getCause());
     }
 
     @Test
     void getShouldTimeout() {
         var key = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
 
-        assertThrows(Client.RequestTimeoutException.class, () -> client.get(key));
+        var exception = assertThrows(Client.RequestException.class, () -> client.get(key));
+        assertInstanceOf(TimeoutException.class, exception.getCause());
     }
 
     @Test
     void deleteShouldTimeout() {
         var key = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
 
-        assertThrows(Client.RequestTimeoutException.class, () -> client.delete(key));
+        var exception = assertThrows(Client.RequestException.class, () -> client.delete(key));
+        assertInstanceOf(TimeoutException.class, exception.getCause());
     }
 
     @Test
