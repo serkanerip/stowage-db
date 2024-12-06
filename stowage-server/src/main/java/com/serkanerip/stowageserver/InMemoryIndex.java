@@ -58,13 +58,9 @@ class InMemoryIndex {
     }
 
     void put(HeapData key, MemoryEntryMetadata metadata) {
-        putInternal(key, metadata);
-    }
-
-    private void putInternal(HeapData key, MemoryEntryMetadata metadata) {
         index.compute(key, (k, previousMetadata) -> {
             var isFresh = previousMetadata == null
-                    || previousMetadata.sequenceNumber <= metadata.sequenceNumber;
+                || previousMetadata.sequenceNumber <= metadata.sequenceNumber;
             updateStats(key.size(), previousMetadata, metadata);
             return isFresh ? metadata : previousMetadata;
         });

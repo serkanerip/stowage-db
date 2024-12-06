@@ -112,12 +112,8 @@ class LogSegment {
             return;
         }
         logger.info("Shutting down log segment {}", segmentId);
-        try {
-            shutdownChannel(fileChannel, dataPath);
-            shutdownChannel(indexChannel, indexPath);
-        } catch (IOException e) {
-            logger.error("Error while shutting down log segment {}", segmentId, e);
-        }
+        shutdownChannel(fileChannel, dataPath);
+        shutdownChannel(indexChannel, indexPath);
     }
 
     long getId() {
@@ -207,20 +203,25 @@ class LogSegment {
         }
     }
 
-    private void shutdownChannel(FileChannel ch, Path path) throws IOException {
-        if (!Files.exists(path)) {
-            logger.warn("Path {} does not exist, creating new one!", path);
-            var newCh = FileChannel.open(path,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
-            ch.transferTo(0, ch.size(), newCh);
-            newCh.force(true);
-            newCh.close();
+    private void shutdownChannel(FileChannel ch, Path path) {
+        try {
+            // Check if file is removed, if yes create new one and transfer data from existing fd
+            if (!Files.exists(path)) {
+                logger.warn("Path {} does not exist, creating new one!", path);
+                var newCh = FileChannel.open(path,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
+                ch.transferTo(0, ch.size(), newCh);
+                newCh.force(true);
+                newCh.close();
+                ch.close();
+                logger.warn("New file created for path {} and all data transferred from channel!", path);
+                return;
+            }
+            ch.force(true);
             ch.close();
-            logger.warn("New file created for path {} and all data transferred from channel!", path);
-            return;
+        } catch (IOException e) {
+            logger.error("Error while shutting channel of {}", path, e);
         }
-        ch.force(true);
-        ch.close();
     }
 
     private void flushToDisk() throws IOException {
