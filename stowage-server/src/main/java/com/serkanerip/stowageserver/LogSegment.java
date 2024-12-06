@@ -47,6 +47,11 @@ class LogSegment {
 
     private volatile boolean decommissioned = false;
 
+    // Concurrent reads are allowed hence ThreadLocal is appropriate
+    private final ThreadLocal<ByteBuffer> readBuffer = ThreadLocal.withInitial(
+        () -> ByteBuffer.allocateDirect(1024 * 1024) // 1Mib
+    );
+
     LogSegment(Path dataPath, State state, long flushThreshold) {
         this.dataPath = dataPath;
         this.state = state;
@@ -96,6 +101,7 @@ class LogSegment {
 
     void decommission() {
         try {
+            readBuffer.remove();
             indexChannel.close();
             fileChannel.close();
             Files.delete(dataPath);
@@ -112,6 +118,7 @@ class LogSegment {
             return;
         }
         logger.info("Shutting down log segment {}", segmentId);
+        readBuffer.remove();
         shutdownChannel(fileChannel, dataPath);
         shutdownChannel(indexChannel, indexPath);
     }
@@ -132,6 +139,7 @@ class LogSegment {
         return new IndexChannelIterator(indexChannel);
     }
 
+    // Thread safe
     byte[] read(InMemoryIndex.MemoryEntryMetadata memoryEntryMetadata) {
         var valSize = memoryEntryMetadata.valueSize();
         var valueOffset = memoryEntryMetadata.valueOffset();
@@ -144,7 +152,9 @@ class LogSegment {
             return new byte[0];
         }
 
-        var buff = ByteBuffer.allocate(valSize);
+        var localBuff = readBuffer.get();
+        localBuff.clear();
+        ByteBuffer buff = localBuff.capacity() > valSize ? localBuff : ByteBuffer.allocate(valSize);
         try {
             int bytesRead;
             int totalBytesRead = 0;
@@ -179,6 +189,7 @@ class LogSegment {
         }
     }
 
+    // Not thread safe
     PersistentEntryMetadata write(byte[] rawKey, byte[] rawValue, long sequenceNumber) {
         try {
             var entryRecord = new EntryRecord(rawKey, rawValue);
