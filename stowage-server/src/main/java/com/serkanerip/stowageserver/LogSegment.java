@@ -47,9 +47,8 @@ class LogSegment {
 
     private volatile boolean decommissioned = false;
 
-    // Concurrent reads are allowed hence ThreadLocal is appropriate
     private final ThreadLocal<ByteBuffer> readBuffer = ThreadLocal.withInitial(
-        () -> ByteBuffer.allocateDirect(1024 * 1024) // 1Mib
+        () -> ByteBuffer.allocateDirect(4096)
     );
 
     LogSegment(Path dataPath, State state, long flushThreshold) {
@@ -154,7 +153,7 @@ class LogSegment {
 
         var localBuff = readBuffer.get();
         localBuff.clear();
-        ByteBuffer buff = localBuff.capacity() > valSize ? localBuff : ByteBuffer.allocate(valSize);
+        ByteBuffer buff = localBuff.capacity() >= valSize ? localBuff : ByteBuffer.allocate(valSize);
         try {
             int bytesRead;
             int totalBytesRead = 0;
