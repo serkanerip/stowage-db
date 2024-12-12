@@ -189,9 +189,15 @@ class Benchmark {
             long startTime = System.nanoTime();
             if (action < config.readRatio()) {
                 readCounter.incrementAndGet();
-                clientToUse.get(key);
+                var bytes = clientToUse.get(key);
+                if (bytes == null || bytes.length == 0) {
+                    throw new RuntimeException("no value is set for key: " + new String(key, StandardCharsets.UTF_8));
+                }
             } else {
-                clientToUse.put(key, values[random.nextInt(values.length)]);
+                var success = clientToUse.put(key, values[random.nextInt(values.length)]);
+                if (!success) {
+                    throw new RuntimeException("failed to set key: " + new String(key, StandardCharsets.UTF_8));
+                }
                 writeCounter.incrementAndGet();
             }
             long latency = System.nanoTime() - startTime;
